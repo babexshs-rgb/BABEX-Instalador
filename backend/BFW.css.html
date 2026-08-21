@@ -1,0 +1,673 @@
+<style>
+    /* ==========================================================
+       BABEX Framework
+       BFW.css
+       Versión 0.3 — migrado a identidad visual BRAND-002 (Tokens.css.html)
+    ========================================================== */
+    /* ==========================================================
+       VARIABLES DE LAYOUT (los colores viven en Tokens.css.html)
+    ========================================================== */
+    :root{
+        --shadow:0 10px 25px rgba(0,0,0,.35);
+        --sidebar-width:260px;
+        --header-height:70px;
+        --panel-master-width:420px;
+        --app-header-height:145px;
+    }
+    /* ==========================================================
+       RESET
+    ========================================================== */
+    *{
+        margin:0;
+        padding:0;
+        box-sizing:border-box;
+    }
+    html{
+        height:100%;
+    }
+    body{
+        height:100%;
+        font-family:var(--font-family);
+        background:var(--color-bg);
+        color:var(--color-text-primary);
+    }
+    button{
+        font-family:inherit;
+    }
+    a{
+        text-decoration:none;
+        color:inherit;
+    }
+    ul{
+        list-style:none;
+    }
+    /* ==========================================================
+       APP
+    ========================================================== */
+#app{
+    width:100%;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
+    /* ==========================================================
+       SHELL
+    ========================================================== */
+    .babex-shell{
+        display:flex;
+        width:100%;
+        height:100vh;
+    }
+    /* ==========================================================
+       SIDEBAR
+    ========================================================== */
+    .babex-sidebar{
+        width:var(--sidebar-width);
+        background:var(--color-sidebar-bg);
+        color:var(--color-sidebar-text-active);
+        display:flex;
+        flex-direction:column;
+        border-right:1px solid var(--color-border);
+    }
+    .sidebar-logo{
+        padding:30px;
+        border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-logo h1{
+        font-size:28px;
+        font-weight:700;
+        color:var(--color-sidebar-text-active);
+    }
+    .sidebar-logo p{
+        margin-top:6px;
+        font-size:13px;
+        color:var(--color-sidebar-text);
+    }
+    .sidebar-menu{
+        padding:20px 15px;
+    }
+    .sidebar-item{
+        display:flex;
+        align-items:center;
+        gap:14px;
+        padding:14px 18px;
+        border-radius:12px;
+        cursor:pointer;
+        transition:.25s;
+        margin-bottom:6px;
+        color:var(--color-sidebar-text);
+    }
+    .sidebar-item:hover{
+        background:rgba(255,255,255,.08);
+        color:var(--color-sidebar-text-active);
+    }
+    .sidebar-item.active{
+        background:var(--color-sidebar-item-active-bg);
+        color:var(--color-sidebar-text-active);
+    }
+    .sidebar-icon{
+        width:22px;
+        text-align:center;
+    }
+    .sidebar-title{
+        font-size:15px;
+        font-weight:500;
+    }
+    /* ==========================================================
+       MAIN
+    ========================================================== */
+    .babex-main{
+        flex:1;
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+    }
+    /* ==========================================================
+       HEADER
+    ========================================================== */
+    .babex-header{
+        height:var(--header-height);
+        background:var(--color-surface);
+        border-bottom:1px solid var(--color-border);
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:0 35px;
+    }
+    .header-title{
+        font-size:24px;
+        font-weight:700;
+        color:var(--color-text-primary);
+    }
+    .header-buscador{
+        flex:1;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:10px;
+        padding:0 24px;
+    }
+    .header-buscador .babex-input{
+        width:100%;
+        max-width:420px;
+        height:38px;
+    }
+    .header-buscador-volver{
+        height:38px;
+        white-space:nowrap;
+        flex-shrink:0;
+    }
+    .header-user{
+        display:flex;
+        align-items:center;
+        gap:20px;
+        color:var(--color-text-secondary);
+    }
+    .header-user span{
+        cursor:pointer;
+    }
+    /* ==========================================================
+       WORKSPACE
+    ========================================================== */
+    .babex-content{
+        flex:1;
+        overflow:auto;
+        padding:35px;
+    }
+    /* ==========================================================
+       DASHBOARD
+    ========================================================== */
+.dashboard{
+    display:flex;
+    flex-direction:column;
+    gap:30px;
+    height:100%;
+    min-height:0;
+}
+    .dashboard-title h2{
+        font-size:34px;
+        font-weight:700;
+        color:var(--color-text-primary);
+    }
+    .dashboard-title p{
+        margin-top:8px;
+        color:var(--color-text-secondary);
+    }
+    /* ==========================================================
+       KPI CARDS
+    ========================================================== */
+    .kpi-grid{
+        display:grid;
+        grid-template-columns:repeat(4,1fr);
+        gap:20px;
+    }
+    .kpi-card{
+        background:var(--color-surface);
+        border:1px solid var(--color-border);
+        border-radius:var(--radius-lg);
+        padding:22px;
+        box-shadow:var(--shadow);
+        transition:.25s;
+    }
+    .kpi-card:hover{
+        transform:translateY(-3px);
+    }
+    .kpi-title{
+        font-size:14px;
+        color:var(--color-text-secondary);
+    }
+    .kpi-value{
+        margin-top:12px;
+        font-size:34px;
+        font-weight:700;
+        color:var(--color-text-primary);
+    }
+    .kpi-success{
+        color:var(--color-success);
+    }
+    .kpi-warning{
+        color:var(--color-warning);
+    }
+    .kpi-danger{
+        color:var(--color-danger);
+    }
+    /* ==========================================================
+       GRID
+    ========================================================== */
+    .dashboard-grid{
+        display:grid;
+        grid-template-columns:2fr 1fr;
+        gap:25px;
+    }
+    /* ==========================================================
+       CARD
+    ========================================================== */
+    .card{
+        background:var(--color-surface);
+        border:1px solid var(--color-border);
+        border-radius:var(--radius-lg);
+        box-shadow:var(--shadow);
+        padding:25px;
+    }
+    .card-title{
+        font-size:18px;
+        font-weight:600;
+        margin-bottom:20px;
+        color:var(--color-text-primary);
+    }
+    /* ==========================================================
+       ACTIVITY
+    ========================================================== */
+    .activity{
+        display:flex;
+        flex-direction:column;
+        gap:18px;
+    }
+    .activity-item{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        padding-bottom:15px;
+        border-bottom:1px solid var(--color-border);
+    }
+    .activity-item:last-child{
+        border:none;
+        padding-bottom:0;
+    }
+    .activity-name{
+        font-weight:500;
+        color:var(--color-text-primary);
+    }
+    .activity-date{
+        color:var(--color-text-secondary);
+        font-size:13px;
+    }
+    /* ==========================================================
+       QUICK ACTIONS
+    ========================================================== */
+    .quick-actions{
+        display:grid;
+        grid-template-columns:repeat(2,1fr);
+        gap:15px;
+    }
+    .quick-button{
+        background:var(--color-primary-500);
+        color:white;
+        border:none;
+        border-radius:var(--radius-md);
+        padding:18px;
+        cursor:pointer;
+        font-size:15px;
+        font-weight:600;
+        transition:.25s;
+    }
+    .quick-button:hover{
+        background:var(--color-primary-600);
+    }
+    /* ==========================================================
+       STATUS
+    ========================================================== */
+    .status-list{
+        display:flex;
+        flex-direction:column;
+        gap:15px;
+    }
+    .status-item{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        color:var(--color-text-secondary);
+    }
+    .status-online{
+        color:var(--color-success);
+        font-weight:600;
+    }
+    .status-warning{
+        color:var(--color-warning);
+        font-weight:600;
+    }
+    .status-offline{
+        color:var(--color-danger);
+        font-weight:600;
+    }
+    /* ==========================================================
+       PIPELINE DE INSTALACIONES (Dashboard)
+
+       Columnas horizontales con scroll propio: con cinco etapas no
+       cabe en el ancho del panel sin apretar, así que se deja que
+       la fila se desplace en vez de encoger las tarjetas hasta ser
+       ilegibles.
+    ========================================================== */
+    .pipeline-resumen{
+        margin-top:-12px;
+        margin-bottom:18px;
+        font-size:13px;
+        color:var(--color-text-secondary);
+    }
+    .pipeline-tablero{
+        display:flex;
+        gap:14px;
+        overflow-x:auto;
+        padding-bottom:6px;
+    }
+    .pipeline-columna{
+        flex:0 0 220px;
+        display:flex;
+        flex-direction:column;
+    }
+    .pipeline-columna-cabecera{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        padding-top:10px;
+        border-top:3px solid var(--color-border);
+    }
+    .pipeline-columna-nombre{
+        font-size:13px;
+        font-weight:700;
+        color:var(--color-text-primary);
+    }
+    .pipeline-columna-cuenta{
+        min-width:22px;
+        padding:1px 7px;
+        border-radius:var(--radius-full);
+        background:var(--color-surface-hover);
+        color:var(--color-text-secondary);
+        font-size:11px;
+        font-weight:700;
+        text-align:center;
+    }
+    .pipeline-columna-total{
+        margin:4px 0 10px;
+        font-size:12px;
+        color:var(--color-text-muted);
+    }
+    .pipeline-columna-tarjetas{
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+    }
+    .pipeline-tarjeta{
+        padding:10px 12px;
+        border-radius:var(--radius-sm);
+        border-left:3px solid var(--color-border);
+        background:var(--color-bg);
+        cursor:pointer;
+        transition:.15s;
+    }
+    .pipeline-tarjeta:hover{
+        background:var(--color-surface-hover);
+        transform:translateX(2px);
+    }
+    .pipeline-tarjeta-numero{
+        font-size:10.5px;
+        font-weight:700;
+        letter-spacing:.04em;
+        color:var(--color-text-muted);
+    }
+    .pipeline-tarjeta-cliente{
+        margin-top:2px;
+        font-size:13px;
+        font-weight:600;
+        color:var(--color-text-primary);
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .pipeline-tarjeta-direccion{
+        margin-top:1px;
+        font-size:11.5px;
+        color:var(--color-text-muted);
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .pipeline-tarjeta-total{
+        margin-top:6px;
+        font-size:14px;
+        font-weight:700;
+        color:var(--color-text-primary);
+    }
+    /* Solo aparece en columnas que agrupan más de un estado (p.ej.
+       "Rechazado / Cancelada"), para distinguir de un vistazo cuál de
+       los dos es cada tarjeta sin necesitar una columna aparte. */
+    .pipeline-tarjeta-etiqueta{
+        display:inline-block;
+        margin-top:4px;
+        padding:1px 7px;
+        border-radius:var(--radius-full);
+        font-size:10.5px;
+        font-weight:700;
+        background:var(--color-surface-hover);
+        color:var(--color-text-muted);
+    }
+    .pipeline-vacio{
+        margin:0;
+        padding:14px 4px;
+        text-align:center;
+        font-size:12px;
+        color:var(--color-text-muted);
+    }
+    /* ==========================================================
+       UTILIDADES
+    ========================================================== */
+    .text-success{
+        color:var(--color-success);
+    }
+    .text-warning{
+        color:var(--color-warning);
+    }
+    .text-danger{
+        color:var(--color-danger);
+    }
+    .text-muted{
+        color:var(--color-text-muted);
+    }
+    .mt-20{
+        margin-top:20px;
+    }
+    .mt-30{
+        margin-top:30px;
+    }
+    /* ==========================================================
+       SCROLLBAR
+    ========================================================== */
+    ::-webkit-scrollbar{
+        width:10px;
+        height:10px;
+    }
+    ::-webkit-scrollbar-track{
+        background:var(--color-bg);
+    }
+    ::-webkit-scrollbar-thumb{
+        background:rgba(128,128,128,.4);
+        border-radius:20px;
+    }
+    ::-webkit-scrollbar-thumb:hover{
+        background:rgba(128,128,128,.6);
+    }
+    /* ==========================================================
+       ANIMACIONES
+    ========================================================== */
+    .card,
+    .kpi-card,
+    .sidebar-item,
+    .quick-button{
+        transition:all .25s ease;
+    }
+    .card:hover{
+        transform:translateY(-2px);
+    }
+    .fade-in{
+        animation:fadeIn .35s ease;
+    }
+    @keyframes fadeIn{
+        from{
+            opacity:0;
+            transform:translateY(10px);
+        }
+        to{
+            opacity:1;
+            transform:translateY(0);
+        }
+    }
+    /* ==========================================================
+       RESPONSIVE
+    ========================================================== */
+    @media(max-width:1200px){
+        .kpi-grid{
+            grid-template-columns:repeat(2,1fr);
+        }
+        .dashboard-grid{
+            grid-template-columns:1fr;
+        }
+    }
+    @media(max-width:900px){
+        .babex-sidebar{
+            width:80px;
+        }
+        .sidebar-title{
+            display:none;
+        }
+        .sidebar-logo p{
+            display:none;
+        }
+    }
+    @media(max-width:700px){
+        .kpi-grid{
+            grid-template-columns:1fr;
+        }
+        .babex-header{
+            padding:0 20px;
+        }
+        .babex-content{
+            padding:20px;
+        }
+    }
+    /* ==========================================================
+       GALERÍA DE FOTOS
+       Las miniaturas las sirve el servidor como data URI, porque los
+       archivos de Drive son privados y no se pueden enlazar.
+    ========================================================== */
+    .galeria{
+        display:grid;
+        grid-template-columns:repeat(auto-fill, minmax(132px, 1fr));
+        gap:10px;
+    }
+    .galeria-foto{
+        display:block;
+        border-radius:var(--radius-sm);
+        overflow:hidden;
+        background:var(--color-bg);
+        border:1px solid var(--color-border);
+        text-decoration:none;
+        transition:.15s;
+    }
+    .galeria-foto:hover{
+        border-color:var(--color-primary-500);
+        transform:translateY(-2px);
+    }
+    .galeria-foto img,
+    .galeria-hueco{
+        display:block;
+        width:100%;
+        height:104px;
+        object-fit:cover;
+        background:var(--color-surface-hover);
+    }
+    /* Mientras llega la miniatura se deja el hueco ocupado: si no, la
+       pantalla pega un salto cuando cargan las imágenes. */
+    .galeria-hueco{
+        animation:galeriaCargando 1.4s ease-in-out infinite;
+    }
+    @keyframes galeriaCargando{
+        0%,100%{ opacity:.45; }
+        50%{ opacity:.75; }
+    }
+    .galeria-pie{
+        display:block;
+        padding:7px 9px;
+        font-size:11px;
+        line-height:1.35;
+        color:var(--color-text-muted);
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .galeria-vacia{
+        margin:0;
+        font-size:13px;
+        color:var(--color-text-muted);
+    }
+    /* ==========================================================
+       EXPERIENCIA DE USUARIO
+    ========================================================== */
+    body{
+        overflow:hidden;
+    }
+    .babex-content{
+        overflow-y:auto;
+        overflow-x:hidden;
+        animation:viewFade .18s ease;
+        will-change:opacity,transform;
+    }
+    .persona-card,
+    .kpi-card,
+    .card,
+    .quick-button{
+        transition:
+            transform .18s ease,
+            box-shadow .18s ease,
+            border-color .18s ease,
+            background-color .18s ease;
+    }
+    .persona-card:hover{
+        transform:translateY(-1px);
+    }
+    .kpi-card:hover{
+        transform:translateY(-1px);
+    }
+    .quick-button:hover{
+        transform:translateY(-1px);
+    }
+    .sidebar-item{
+        transition:
+            background-color .18s ease,
+            color .18s ease;
+    }
+    @keyframes viewFade{
+        from{
+            opacity:.96;
+            transform:translateY(4px);
+        }
+        to{
+            opacity:1;
+            transform:translateY(0);
+        }
+    }
+    /*==================================================
+    BOTÓN ICONO
+    Los botones primary/secondary/danger ya se definen en
+    Tokens.css.html (.babex-btn-primary/secondary/danger).
+    Aquí solo queda el variante "icono" que no cubre ese archivo.
+    ==================================================*/
+    .babex-btn-icon{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:36px;
+        height:36px;
+        background:var(--color-surface);
+        border:1px solid var(--color-border);
+        border-radius:var(--radius-sm);
+        color:var(--color-text-secondary);
+        cursor:pointer;
+        transition:.20s;
+    }
+    .babex-btn-icon:hover{
+        border-color:var(--color-primary-500);
+        color:var(--color-primary-500);
+    }
+    </style>

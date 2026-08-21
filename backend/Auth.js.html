@@ -1,0 +1,558 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Auth.js
+    Versión : 0.5.0
+    ==================================================
+    Login propio con email + contraseña (ver UsuariosService.gs para
+    el porqué: las dos vías basadas en la identidad de Google que se
+    probaron antes no funcionan de forma fiable con cuentas Gmail
+    personales). Todo pasa por llamadas normales al servidor
+    (apiLogin / apiRegistrar) después de cargar la página — no hace
+    falta ningún dato especial en el HTML servido por Code.gs.
+    ==================================================
+    */
+
+    BFW.Auth = {
+
+        usuario: null,   // { email, nombre, rol }
+        error: null,
+
+        // Nombre y email escritos en el formulario de registro, para
+        // no obligar a rellenarlos otra vez si el intento falla. Las
+        // contraseñas nunca se guardan aquí: se vacían a propósito.
+        registro: { nombre: "", email: "" },
+
+        // Lo mismo para el login: se recuerda el email tecleado, así
+        // tras un fallo solo hay que repetir la contraseña.
+        loginEmail: ""
+
+    };
+
+    /**
+     * Pone el cursor en un campo por su id, en cuanto el navegador
+     * haya terminado de pintar la pantalla.
+     */
+    BFW.Auth._foco = function(id){
+
+        requestAnimationFrame(function(){
+
+            const campo = document.getElementById(id);
+
+            if(campo){
+
+                campo.focus();
+                campo.select();
+
+            }
+
+        });
+
+    };
+
+    BFW.Auth.CLAVE_SESION = "babex_sesion";
+
+    /* ==================================================
+       SESIÓN (sessionStorage: se olvida al cerrar la pestaña)
+    ================================================== */
+
+    BFW.Auth.leerSesion = function(){
+
+        try{
+
+            const raw = sessionStorage.getItem(BFW.Auth.CLAVE_SESION);
+            if(!raw) return null;
+
+            const datos = JSON.parse(raw);
+
+            if(!datos || !datos.email || !datos.rol) return null;
+
+            return datos;
+
+        }catch(e){
+
+            return null;
+
+        }
+
+    };
+
+    BFW.Auth.guardarSesion = function(usuario){
+
+        try{
+
+            sessionStorage.setItem(BFW.Auth.CLAVE_SESION, JSON.stringify(usuario));
+
+        }catch(e){}
+
+    };
+
+    /**
+     * Envoltorio de la llamada al servidor. Se define aquí (en vez de
+     * en BFW.js) para no tener que volver a tocar ese archivo.
+     */
+    BFW.API.cambiarMiPassword = function(passwordActual, passwordNueva, callback){
+
+        google.script.run
+
+            .withSuccessHandler(function(resultado){
+
+                if(callback){
+
+                    callback(resultado);
+
+                }
+
+            })
+
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                alert("Error cambiando la contraseña.");
+
+            })
+
+            .apiCambiarMiPassword(BFW.Auth.usuario ? BFW.Auth.usuario.email : "", passwordActual, passwordNueva);
+
+    };
+
+    // Definida después de BFW.UI.js: se le engancha la barra a mano.
+    BFW.UI.engancharCarga("cambiarMiPassword");
+
+    BFW.Auth.cambiarMiPassword = function(){
+
+        BFW.UI.pedir({
+
+            titulo: "Cambiar contraseña",
+            texto: "Necesitamos tu contraseña actual para confirmar que eres tú.",
+            aceptar: "Guardar",
+
+            campos: [
+                { id: "actual",   etiqueta: "Contraseña actual",     tipo: "password", placeholder: "••••••••" },
+                { id: "nueva",    etiqueta: "Nueva contraseña",      tipo: "password", placeholder: "Mínimo 6 caracteres" },
+                { id: "repetida", etiqueta: "Repite la nueva",       tipo: "password", placeholder: "Mínimo 6 caracteres" }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            if(!valores.actual){
+
+                mostrarError("Introduce tu contraseña actual.");
+                return;
+
+            }
+
+            if(valores.nueva.length < 6){
+
+                mostrarError("La contraseña nueva debe tener al menos 6 caracteres.");
+                return;
+
+            }
+
+            if(valores.nueva !== valores.repetida){
+
+                mostrarError("Las dos contraseñas nuevas no coinciden.");
+                return;
+
+            }
+
+            BFW.API.cambiarMiPassword(valores.actual, valores.nueva, function(resultado){
+
+                if(resultado && resultado.ok === false){
+
+                    // El diálogo sigue abierto para poder reintentar
+                    // sin volver a empezar.
+                    mostrarError(resultado.error || "No se ha podido cambiar la contraseña.");
+                    return;
+
+                }
+
+                cerrar();
+
+                BFW.UI.success("Contraseña actualizada correctamente.");
+
+            });
+
+        });
+
+    };
+
+    BFW.Auth.cerrarSesion = function(){
+
+        try{
+
+            sessionStorage.removeItem(BFW.Auth.CLAVE_SESION);
+
+        }catch(e){}
+
+        BFW.Auth.usuario = null;
+        BFW.Auth.error = null;
+        BFW.Auth.mostrarLogin();
+
+    };
+
+    BFW.Auth.esAdmin = function(){
+
+        return !!BFW.Auth.usuario && BFW.Auth.usuario.rol === "Admin";
+
+    };
+
+    BFW.Auth.iniciales = function(usuario){
+
+        if(!usuario || !usuario.nombre) return "?";
+
+        const partes = usuario.nombre.trim().split(/\s+/);
+
+        let ini = partes[0].charAt(0);
+
+        if(partes.length > 1){
+
+            ini += partes[partes.length - 1].charAt(0);
+
+        }
+
+        return ini.toUpperCase();
+
+    };
+
+    /* ==================================================
+       ARRANQUE
+    ================================================== */
+
+    BFW.Auth.iniciar = function(){
+
+        const guardada = BFW.Auth.leerSesion();
+
+        if(guardada){
+
+            BFW.Auth.usuario = guardada;
+            BFW.App.render();
+            return;
+
+        }
+
+        BFW.Auth.mostrarLogin();
+
+    };
+
+    /* ==================================================
+       PANTALLA DE LOGIN
+    ================================================== */
+
+    BFW.Auth.mostrarLogin = function(){
+
+        document.getElementById("app").innerHTML = BFW.Auth.renderLogin();
+
+        // Si ya hay un email escrito (vienes de un intento fallido),
+        // el cursor va directo a la contraseña.
+        BFW.Auth._foco(BFW.Auth.loginEmail ? "auth-login-password" : "auth-login-email");
+
+    };
+
+    /**
+     * Isotipo de BABEX en SVG, para no depender de ningún archivo
+     * externo ni de que Drive esté accesible en la pantalla de login.
+     */
+    BFW.Auth.LOGO = `
+
+        <svg viewBox="0 0 120 120" width="74" height="74" aria-label="Babex">
+            <rect width="120" height="120" rx="28" fill="#16294A"/>
+            <path d="M22 80 Q60 106 98 80" fill="none" stroke="#5C9DFF" stroke-width="7.5" stroke-linecap="round"/>
+            <path d="M32 76 L32 51 L60 27 L88 51 L88 76 Z" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <g fill="#ffffff">
+                <rect x="50" y="53" width="8" height="8" rx="1.3"/>
+                <rect x="62" y="53" width="8" height="8" rx="1.3"/>
+                <rect x="50" y="65" width="8" height="8" rx="1.3"/>
+                <rect x="62" y="65" width="8" height="8" rx="1.3"/>
+            </g>
+        </svg>
+
+    `;
+
+    BFW.Auth.renderLogin = function(){
+
+        return `
+
+        <div class="auth-pantalla">
+
+            <div class="auth-card">
+
+                <div class="auth-logo">
+                    ${BFW.Auth.LOGO}
+                    <h1>Babex</h1>
+                    <p>Smart Home Solutions</p>
+                </div>
+
+                ${BFW.Auth.error ? `<div class="auth-error">${BFW.Auth.error}</div>` : ""}
+
+                <div class="auth-form">
+
+                    <div>
+                        <label for="auth-login-email">Email</label>
+                        <input id="auth-login-email" class="babex-input" type="email" placeholder="tucuenta@gmail.com"
+                            value="${BFW.Auth.loginEmail}"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.entrar(); }">
+                    </div>
+
+                    <div>
+                        <label for="auth-login-password">Contraseña</label>
+                        <input id="auth-login-password" class="babex-input" type="password" placeholder="••••••••"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.entrar(); }">
+                    </div>
+
+                </div>
+
+                <button class="babex-btn-primary auth-boton-accion" onclick="BFW.Auth.entrar()">Entrar</button>
+
+                <button class="auth-link" onclick="BFW.Auth.error=null; BFW.Auth.registro={nombre:'',email:''}; BFW.Auth.mostrarRegistro()">¿No tienes cuenta? Solicita acceso</button>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Auth.entrar = function(){
+
+        const email = document.getElementById("auth-login-email").value.trim();
+        const password = document.getElementById("auth-login-password").value;
+
+        BFW.Auth.loginEmail = email;
+
+        BFW.API.login(email, password, function(resultado){
+
+            if(!resultado || resultado.ok === false){
+
+                BFW.Auth.error = (resultado && resultado.error) || "No se ha podido iniciar sesión.";
+                BFW.Auth.mostrarLogin();
+                return;
+
+            }
+
+            BFW.Auth.error = null;
+            BFW.Auth.loginEmail = "";
+
+            BFW.Auth.usuario = {
+                email: resultado.email,
+                nombre: resultado.nombre,
+                rol: resultado.rol
+            };
+
+            BFW.Auth.guardarSesion(BFW.Auth.usuario);
+            BFW.App.render();
+
+        });
+
+    };
+
+    /* ==================================================
+       PANTALLA DE REGISTRO (solicitar acceso)
+    ================================================== */
+
+    /**
+     * Pinta la pantalla de registro. OJO: no borra BFW.Auth.error,
+     * porque se llama también después de un intento fallido para
+     * mostrar el motivo (email ya registrado, contraseñas que no
+     * coinciden...). El error se limpia al entrar aquí desde el login
+     * (ver el botón "Solicita acceso").
+     */
+    BFW.Auth.mostrarRegistro = function(){
+
+        document.getElementById("app").innerHTML = BFW.Auth.renderRegistro();
+
+        // Si nombre y email ya están puestos (vienes de un intento
+        // fallido), el cursor va directo a la contraseña, que es lo
+        // único que hay que volver a escribir.
+        const yaRellenado = BFW.Auth.registro.nombre && BFW.Auth.registro.email;
+
+        BFW.Auth._foco(yaRellenado ? "auth-registro-password" : "auth-registro-nombre");
+
+    };
+
+    BFW.Auth.renderRegistro = function(){
+
+        return `
+
+        <div class="auth-pantalla">
+
+            <div class="auth-card">
+
+                <div class="auth-logo">
+                    ${BFW.Auth.LOGO}
+                    <h1>Babex</h1>
+                    <p>Smart Home Solutions</p>
+                </div>
+
+                <p class="auth-texto">Pide acceso a BABEX. Un administrador tiene que aprobar tu solicitud antes de que puedas entrar.</p>
+
+                ${BFW.Auth.error ? `<div class="auth-error">${BFW.Auth.error}</div>` : ""}
+
+                <div class="auth-form">
+
+                    <div>
+                        <label for="auth-registro-nombre">Nombre</label>
+                        <input id="auth-registro-nombre" class="babex-input" type="text" placeholder="Tu nombre"
+                            value="${BFW.Auth.registro.nombre}"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.registrar(); }">
+                    </div>
+
+                    <div>
+                        <label for="auth-registro-email">Email</label>
+                        <input id="auth-registro-email" class="babex-input" type="email" placeholder="tucuenta@gmail.com"
+                            value="${BFW.Auth.registro.email}"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.registrar(); }">
+                    </div>
+
+                    <div>
+                        <label for="auth-registro-password">Contraseña</label>
+                        <input id="auth-registro-password" class="babex-input" type="password" placeholder="Mínimo 6 caracteres"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.registrar(); }">
+                    </div>
+
+                    <div>
+                        <label for="auth-registro-password2">Repite la contraseña</label>
+                        <input id="auth-registro-password2" class="babex-input" type="password" placeholder="Mínimo 6 caracteres"
+                            onkeypress="if(event.key==='Enter'){ BFW.Auth.registrar(); }">
+                    </div>
+
+                </div>
+
+                <button class="babex-btn-primary auth-boton-accion" onclick="BFW.Auth.registrar()">Solicitar acceso</button>
+
+                <button class="auth-link" onclick="BFW.Auth.error=null; BFW.Auth.mostrarLogin()">Ya tengo cuenta, volver a entrar</button>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Auth.registrar = function(){
+
+        const nombre = document.getElementById("auth-registro-nombre").value.trim();
+        const email = document.getElementById("auth-registro-email").value.trim();
+        const password = document.getElementById("auth-registro-password").value;
+        const password2 = document.getElementById("auth-registro-password2").value;
+
+        // Se recuerdan para repintar el formulario si algo falla, y
+        // que solo haya que volver a escribir las contraseñas.
+        BFW.Auth.registro = { nombre: nombre, email: email };
+
+        if(!nombre){
+
+            BFW.Auth.error = "Introduce tu nombre.";
+            BFW.Auth.mostrarRegistro();
+            return;
+
+        }
+
+        if(!email || email.indexOf("@") === -1){
+
+            BFW.Auth.error = "Introduce un email válido.";
+            BFW.Auth.mostrarRegistro();
+            return;
+
+        }
+
+        if(password.length < 6){
+
+            BFW.Auth.error = "La contraseña debe tener al menos 6 caracteres.";
+            BFW.Auth.mostrarRegistro();
+            return;
+
+        }
+
+        if(password !== password2){
+
+            BFW.Auth.error = "Las dos contraseñas no coinciden.";
+            BFW.Auth.mostrarRegistro();
+            return;
+
+        }
+
+        BFW.API.registrar(email, nombre, password, function(resultado){
+
+            if(!resultado || resultado.ok === false){
+
+                BFW.Auth.error = (resultado && resultado.error) || "No se ha podido enviar la solicitud.";
+                BFW.Auth.mostrarRegistro();
+                return;
+
+            }
+
+            BFW.Auth.error = null;
+            BFW.Auth.registro = { nombre: "", email: "" };
+            document.getElementById("app").innerHTML = BFW.Auth.renderRegistroEnviado();
+
+        });
+
+    };
+
+    /* ==================================================
+       BOTÓN "CAMBIAR CONTRASEÑA" EN EL HEADER
+       El header (con el botón "Salir") lo pinta BFW.js dentro de
+       BFW.App.render(), que se ejecuta en cada cambio de pantalla.
+       En vez de tocar esa plantilla, vigilamos el DOM y añadimos
+       nuestro botón cada vez que el de "Salir" reaparece.
+    ================================================== */
+
+    BFW.Auth._insertarBotonCambiarPassword = function(){
+
+        const salir = document.querySelector(".auth-usuario-salir");
+
+        if(!salir) return;
+        if(salir.parentNode.querySelector(".auth-usuario-cambiar-password")) return;
+
+        const boton = document.createElement("button");
+        boton.className = "auth-usuario-salir auth-usuario-cambiar-password";
+        boton.title = "Cambiar contraseña";
+        boton.textContent = "🔑";
+        boton.style.marginRight = "4px";
+        boton.onclick = function(){ BFW.Auth.cambiarMiPassword(); };
+
+        salir.parentNode.insertBefore(boton, salir);
+
+    };
+
+    if(typeof MutationObserver !== "undefined"){
+
+        new MutationObserver(function(){
+            BFW.Auth._insertarBotonCambiarPassword();
+        }).observe(document.body, { childList: true, subtree: true });
+
+    }
+
+    BFW.Auth.renderRegistroEnviado = function(){
+
+        return `
+
+        <div class="auth-pantalla">
+
+            <div class="auth-card">
+
+                <div class="auth-logo">
+                    ${BFW.Auth.LOGO}
+                    <h1>Babex</h1>
+                    <p>Smart Home Solutions</p>
+                </div>
+
+                <p class="auth-texto">Solicitud enviada. Hemos avisado al administrador — en cuanto apruebe tu acceso podrás entrar con el email y la contraseña que has elegido.</p>
+
+                <button class="babex-btn-primary auth-boton-accion" onclick="BFW.Auth.mostrarLogin()">Volver al login</button>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+</script>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BABEX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ========================= -->
+    <!-- TOKENS DE IDENTIDAD VISUAL -->
+    <!-- ========================= -->
+    <?!= include('Tokens.css'); ?>
+    <!-- ========================= -->
+    <!-- CSS GLOBAL -->
+    <!-- ========================= -->
+    <?!= include('BFW.css'); ?>
+    <?!= include('BFW.Layout.css'); ?>
+    <!-- ========================= -->
+    <!-- CSS MÓDULOS -->
+    <!-- ========================= -->
+    <?!= include('Personas.css'); ?>
+    <?!= include('Inmuebles.css'); ?>
+    <?!= include('Casos.css'); ?>
+    <?!= include('Empresas.css'); ?>
+    <?!= include('Agenda.css'); ?>
+    <?!= include('Documentos.css'); ?>
+    <?!= include('Administracion.css'); ?>
+    <?!= include('Auth.css'); ?>
+</head>
+<body>
+    <div id="app"></div>
+    <!-- ========================= -->
+    <!-- JAVASCRIPT GLOBAL -->
+    <!-- ========================= -->
+    <?!= include('BFW.js'); ?>
+    <?!= include('Auth.js'); ?>
+    <!-- ========================= -->
+    <!-- MÓDULOS -->
+    <!-- ========================= -->
+    <?!= include('Dashboard'); ?>
+    <?!= include('Personas'); ?>
+    <?!= include('Inmuebles.js'); ?>
+    <?!= include('Casos.js'); ?>
+    <?!= include('Empresas.js'); ?>
+    <?!= include('Agenda.js'); ?>
+    <?!= include('Documentos.js'); ?>
+    <?!= include('Administracion.js'); ?>
+</body>
+</html>

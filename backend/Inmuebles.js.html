@@ -1,0 +1,2226 @@
+<script>
+
+/*
+==================================================
+BABEX
+Archivo : Inmuebles.js
+Versión : 0.1.0
+==================================================
+*/
+
+BFW.Inmuebles = {
+    data: null,
+    personas: null,
+    documentos: null,
+    estancias: null,
+    inventario: null,
+    inventarioDe: null,
+    config: null,
+    filtro: "",
+    tipoFiltro: "TODOS",
+    view: "LIST",
+    editando: false,
+    current: null
+};
+
+/* ==================================================
+   ESTANCIAS
+   Cuelgan del inmueble, no de la visita: se levantan una vez y se
+   reutilizan en instalaciones y mantenimientos posteriores.
+================================================== */
+
+BFW.Inmuebles.TIPOS_ESTANCIA_POR_DEFECTO = [
+    "Salón", "Cocina", "Dormitorio", "Baño", "Aseo", "Pasillo", "Recibidor",
+    "Despacho", "Garaje", "Trastero", "Terraza", "Jardín", "Piscina",
+    "Cuadro eléctrico", "Exterior"
+];
+
+BFW.API.getEstancias = function(inmuebleId, callback){
+
+    google.script.run
+        .withSuccessHandler(function(datos){ callback(datos); })
+        .withFailureHandler(function(error){ console.error(error); callback([]); })
+        .apiGetEstancias(inmuebleId || "");
+
+};
+
+BFW.API.insertEstancia = function(estancia, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(error){ console.error(error); callback({ ok:false, error:"Error guardando la estancia." }); })
+        .apiInsertEstancia(estancia, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.deleteEstancia = function(id, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(error){ console.error(error); callback({ ok:false, error:"Error eliminando la estancia." }); })
+        .apiDeleteEstancia(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/* --------------------------------------------------
+   Productos por estancia
+
+   El inventario de una casa pertenece al INMUEBLE, no a una cita
+   concreta: aquí es donde se ve y se corrige. Las funciones de la API
+   se comparten con la app del instalador; se definen solo si no
+   existen ya, porque el orden de carga de los archivos puede variar.
+-------------------------------------------------- */
+
+if(!BFW.API.insertLinea){
+
+    BFW.API.insertLinea = function(linea, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar el producto." }); })
+            .apiInsertLineaEstancia(linea, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("insertLinea");
+
+}
+
+if(!BFW.API.updateLinea){
+
+    BFW.API.updateLinea = function(linea, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido actualizar." }); })
+            .apiUpdateLineaEstancia(linea, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("updateLinea");
+
+}
+
+if(!BFW.API.deleteLinea){
+
+    BFW.API.deleteLinea = function(id, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido eliminar." }); })
+            .apiDeleteLineaEstancia(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("deleteLinea");
+
+}
+
+if(!BFW.API.guardarObsEstancia){
+
+    BFW.API.guardarObsEstancia = function(id, obs, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar." }); })
+            .apiGuardarObservacionEstancia(id, obs, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("guardarObsEstancia");
+
+}
+
+/**
+ * Inventario completo de un inmueble: sus estancias, lo que hay en
+ * cada una y el catálogo para poder añadir. En una sola llamada.
+ */
+BFW.API.getInventario = function(inmuebleId, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, estancias:[], lineas:[], catalogo:[], fotos:[] }); })
+        .apiGetInventarioInmueble(inmuebleId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/**
+ * Sube una foto a una estancia desde la oficina: mismo endpoint que usa
+ * el instalador desde el móvil, pero con el archivo elegido de un
+ * <input type="file"> normal en vez de con la cámara.
+ */
+BFW.API.subirFotoEstancia = function(datos, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido subir la foto." }); })
+        .apiSubirFotoEstancia(datos, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.asignarEstanciaFoto = function(documentoId, estanciaId, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido reasignar." }); })
+        .apiAsignarEstanciaFoto(documentoId, estanciaId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+["getInventario", "subirFotoEstancia", "asignarEstanciaFoto"].forEach(function(n){ BFW.UI.engancharCarga(n); });
+
+BFW.UI.engancharCarga("getEstancias");
+BFW.UI.engancharCarga("insertEstancia");
+BFW.UI.engancharCarga("deleteEstancia");
+
+BFW.Inmuebles.tiposEstanciaDisponibles = function(){
+
+    return BFW.Config.obtenerLista(BFW.Inmuebles.config, "ESTANCIAS_TIPOS", BFW.Inmuebles.TIPOS_ESTANCIA_POR_DEFECTO);
+
+};
+
+BFW.Inmuebles.estanciasDe = function(inmuebleId){
+
+    if(!BFW.Inmuebles.estancias) return [];
+
+    return BFW.Inmuebles.estancias.filter(function(e){
+        return Number(e.inmuebleId) === Number(inmuebleId);
+    });
+
+};
+
+BFW.Inmuebles.anadirEstancia = function(){
+
+    const inmuebleId = BFW.Inmuebles.current;
+
+    if(!inmuebleId) return;
+
+    BFW.UI.pedir({
+
+        titulo: "Nueva estancia",
+        texto: "Elige el tipo y, si hace falta, concreta cuál es.",
+        aceptar: "Añadir",
+
+        campos: [
+            {
+                id: "tipo",
+                etiqueta: "Tipo de estancia",
+                tipo: "select",
+                opciones: BFW.Inmuebles.TIPOS_ESTANCIA_POR_DEFECTO.concat(["Otra"])
+            },
+            { id: "detalle", etiqueta: "¿Cuál? (opcional)", tipo: "text",
+              placeholder: "Ej. principal, infantil, de invitados..." },
+            { id: "observaciones", etiqueta: "Observaciones (opcional)", tipo: "text", placeholder: "" }
+        ]
+
+    }, function(valores, mostrarError, cerrar){
+
+        const tipo = valores.tipo;
+        const detalle = (valores.detalle || "").trim();
+
+        if(tipo === "Otra" && !detalle){
+
+            mostrarError("Has elegido \"Otra\": escribe de qué estancia se trata.");
+            return;
+
+        }
+
+        const nombre = tipo === "Otra"
+            ? detalle
+            : (detalle ? tipo + " " + detalle : tipo);
+
+        BFW.API.insertEstancia({
+            inmuebleId: inmuebleId,
+            nombre: nombre,
+            tipo: tipo,
+            observaciones: valores.observaciones.trim()
+        }, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                mostrarError(resultado.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            cerrar();
+
+            BFW.Inmuebles.estancias = null;
+            BFW.Inmuebles.inventario = null;
+            BFW.App.render();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.eliminarEstancia = function(id, nombre){
+
+    BFW.UI.confirmar('¿Eliminar la estancia "' + nombre + '"?', function(){
+
+        BFW.API.deleteEstancia(id, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                BFW.UI.error(resultado.error || "No se ha podido eliminar.");
+                return;
+
+            }
+
+            BFW.Inmuebles.estancias = null;
+            BFW.Inmuebles.inventario = null;
+            BFW.App.render();
+
+        });
+
+    });
+
+};
+
+/* ==================================================
+   PRESUPUESTOS
+
+   Se generan con lo que el instalador dejó marcado como "Propuesto"
+   en las estancias. Los precios se congelan al generarlo: una oferta
+   con fecha no puede cambiar porque el proveedor suba la tarifa.
+================================================== */
+
+BFW.Inmuebles.presupuestos = null;
+BFW.Inmuebles.presupuestosDe = null;
+
+BFW.API.getPresupuestos = function(inmuebleId, callback){
+
+    google.script.run
+        .withSuccessHandler(function(d){ callback(d); })
+        .withFailureHandler(function(e){ console.error(e); callback([]); })
+        .apiGetPresupuestos(inmuebleId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.generarPresupuesto = function(inmuebleId, opciones, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido generar." }); })
+        .apiGenerarPresupuesto(inmuebleId, opciones, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.actualizarPresupuesto = function(presupuesto, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido actualizar." }); })
+        .apiActualizarPresupuesto(presupuesto, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.pdfPresupuesto = function(id, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido generar el PDF." }); })
+        .apiPdfPresupuesto(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.hojaPresupuesto = function(id, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido generar la hoja." }); })
+        .apiHojaPresupuesto(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.API.deletePresupuesto = function(id, callback){
+
+    google.script.run
+        .withSuccessHandler(function(r){ callback(r); })
+        .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido eliminar." }); })
+        .apiDeletePresupuesto(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+["getPresupuestos","generarPresupuesto","actualizarPresupuesto","pdfPresupuesto","hojaPresupuesto","deletePresupuesto"]
+    .forEach(function(n){ BFW.UI.engancharCarga(n); });
+
+BFW.Inmuebles.euros = function(n){
+
+    return Number(n || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+};
+
+BFW.Inmuebles.recargarPresupuestos = function(){
+
+    BFW.Inmuebles.presupuestos = null;
+    BFW.App.render();
+
+};
+
+BFW.Inmuebles.nuevoPresupuesto = function(inmuebleId){
+
+    BFW.UI.pedir({
+
+        titulo: "Generar presupuesto",
+        texto: "Se incluirá todo lo que esté marcado como Propuesto en las estancias.",
+        aceptar: "Generar",
+
+        campos: [
+            { id: "manoObra",  etiqueta: "Mano de obra (€, sin IVA)", tipo: "number", valor: 0 },
+            { id: "descuento", etiqueta: "Descuento sobre material (%)", tipo: "number", valor: 0 },
+            { id: "iva",       etiqueta: "IVA (%)", tipo: "number", valor: 21 },
+            { id: "observaciones", etiqueta: "Observaciones (salen en el PDF)", tipo: "textarea", valor: "" }
+        ]
+
+    }, function(valores, mostrarError, cerrar){
+
+        BFW.API.generarPresupuesto(inmuebleId, {
+            manoObra: Number(valores.manoObra) || 0,
+            descuento: Number(valores.descuento) || 0,
+            iva: Number(valores.iva) || 0,
+            observaciones: valores.observaciones
+        }, function(r){
+
+            if(r && r.ok === false){
+
+                mostrarError(r.error || "No se ha podido generar.");
+                return;
+
+            }
+
+            cerrar();
+
+            BFW.UI.success("Presupuesto " + r.numero + " generado.");
+            BFW.Inmuebles.recargarPresupuestos();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.cambiarEstadoPresupuesto = function(id, estado){
+
+    BFW.API.actualizarPresupuesto({ id: id, estado: estado }, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido actualizar.");
+            return;
+
+        }
+
+        BFW.Inmuebles.recargarPresupuestos();
+
+    });
+
+};
+
+BFW.Inmuebles.pdfPresupuesto = function(id){
+
+    BFW.API.pdfPresupuesto(id, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido generar el PDF.");
+            return;
+
+        }
+
+        window.open(r.url, "_blank");
+
+    });
+
+};
+
+BFW.Inmuebles.hojaPresupuesto = function(id){
+
+    BFW.API.hojaPresupuesto(id, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido generar la hoja.");
+            return;
+
+        }
+
+        window.open(r.url, "_blank");
+
+    });
+
+};
+
+BFW.Inmuebles.eliminarPresupuesto = function(id, numero){
+
+    BFW.UI.confirmar('¿Eliminar el presupuesto ' + numero + '?', function(){
+
+        BFW.API.deletePresupuesto(id, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido eliminar.");
+                return;
+
+            }
+
+            BFW.Inmuebles.recargarPresupuestos();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.renderPresupuestos = function(inmuebleId){
+
+    if(!BFW.Auth.esAdmin()){
+
+        return `<p class="inv-vacio">Solo los administradores pueden ver los presupuestos.</p>`;
+
+    }
+
+    if(BFW.Inmuebles.presupuestos === null || BFW.Inmuebles.presupuestosDe !== inmuebleId){
+
+        BFW.Inmuebles.presupuestosDe = inmuebleId;
+
+        BFW.API.getPresupuestos(inmuebleId, function(d){
+
+            BFW.Inmuebles.presupuestos = Array.isArray(d) ? d : [];
+            BFW.App.render();
+
+        });
+
+        return `<p>Cargando presupuestos...</p>`;
+
+    }
+
+    const lista = BFW.Inmuebles.presupuestos;
+
+    const colores = {
+        "Borrador": "pres-borrador",
+        "Enviado": "pres-enviado",
+        "Aceptado": "pres-aceptado",
+        "Rechazado": "pres-rechazado",
+        "Cancelada": "pres-cancelada",
+        "En ejecución": "pres-ejecucion",
+        "Ejecutada": "pres-ejecutada",
+        "Facturada": "pres-facturada",
+        "Cobrada": "pres-cobrada"
+    };
+
+    // Mismo orden que PresupuestosService.ESTADOS: primero se decide
+    // si el cliente lo acepta, y desde ahí se sigue la instalación
+    // hasta cobrarla. "Rechazado" y "Cancelada" van juntos porque son
+    // las dos formas de que el ciclo termine sin llegar a cobrarse
+    // (antes de empezar, o a mitad de camino).
+    const ESTADOS_PRESUPUESTO = [
+        "Borrador", "Enviado", "Aceptado", "Rechazado", "Cancelada",
+        "En ejecución", "Ejecutada", "Facturada", "Cobrada"
+    ];
+
+    // Se maqueta en vertical y no en fila: esta tarjeta vive en la
+    // columna estrecha de la ficha, y en horizontal el número, el
+    // desglose y el total acababan amontonados unos sobre otros.
+    const filas = lista.map(function(p){
+
+        const cuantas = (p.lineas || []).length;
+
+        return `
+
+        <div class="pres-tarjeta">
+
+            <div class="pres-cabecera">
+                <span class="pres-numero">${p.numero}</span>
+                <span class="pres-estado ${colores[p.estado] || ""}">${p.estado}</span>
+            </div>
+
+            <div class="pres-total">${BFW.Inmuebles.euros(p.total)}</div>
+
+            <div class="pres-desglose">
+                <span><b>${cuantas}</b> línea${cuantas === 1 ? "" : "s"}</span>
+                <span>Base <b>${BFW.Inmuebles.euros(p.base)}</b></span>
+                <span>IVA <b>${p.iva}%</b></span>
+            </div>
+
+            <select class="babex-input pres-select"
+                onchange="BFW.Inmuebles.cambiarEstadoPresupuesto(${p.id}, this.value)">
+                ${ESTADOS_PRESUPUESTO.map(function(e){
+                    return `<option ${p.estado === e ? "selected" : ""}>${e}</option>`;
+                }).join("")}
+            </select>
+
+            <div class="pres-acciones">
+
+                <button class="pres-boton" title="PDF sin costes, para enviar al cliente"
+                    onclick="BFW.Inmuebles.pdfPresupuesto(${p.id})">
+                    <span>📄</span> PDF cliente
+                </button>
+
+                <button class="pres-boton" title="Hoja de cálculo con costes y márgenes (uso interno)"
+                    onclick="BFW.Inmuebles.hojaPresupuesto(${p.id})">
+                    <span>📊</span> Hoja interna
+                </button>
+
+                <button class="pres-boton pres-boton-borrar" title="Eliminar presupuesto"
+                    onclick="BFW.Inmuebles.eliminarPresupuesto(${p.id}, '${p.numero}')">
+                    🗑️
+                </button>
+
+            </div>
+
+        </div>
+
+        `;
+
+    }).join("");
+
+    return `
+
+        ${filas
+            ? `<div class="pres-rejilla">${filas}</div>`
+            : `<p class="inv-vacio">Todavía no hay presupuestos para este inmueble.</p>`}
+
+        <button class="babex-btn-primary inmueble-module-btn" onclick="BFW.Inmuebles.nuevoPresupuesto(${inmuebleId})">
+            + Generar presupuesto con lo propuesto
+        </button>
+
+    `;
+
+};
+
+/* --------------------------------------------------
+   Características del inmueble
+
+   Las guarda el instalador desde el móvil (plantas, garaje, jardín,
+   ascensor...). Se almacenan en JSON, así que aquí solo hay que
+   traducir cada clave a un texto legible.
+-------------------------------------------------- */
+
+BFW.Inmuebles.ETIQUETAS_CARACTERISTICAS = {
+    personas:   "Personas que viven",
+    internet:   "Conexión a internet",
+    cuadro:     "Cuadro eléctrico accesible",
+    planta:     "Planta",
+    plantas:    "Número de plantas",
+    ascensor:   "Ascensor",
+    terraza:    "Terraza o balcón",
+    trastero:   "Trastero",
+    garaje:     "Garaje",
+    jardin:     "Jardín",
+    piscina:    "Piscina",
+    porton:     "Portón o cancela",
+    escaparate: "Escaparate a la calle",
+    almacen:    "Almacén o trastienda",
+    aseo:       "Aseo",
+    alarma:     "Alarma ya instalada",
+    altura:     "Altura aproximada (m)",
+    oficinas:   "Oficinas dentro",
+    muelle:     "Muelle de carga",
+    puestos:    "Puestos de trabajo",
+    sala:       "Sala de reuniones"
+};
+
+BFW.Inmuebles.renderCaracteristicas = function(i){
+
+    const tipo = i.tipo || "";
+    const subtipo = i.subtipo || "";
+    const c = i.caracteristicas || {};
+    const claves = Object.keys(c);
+
+    if(!tipo && !claves.length){
+
+        return `<p class="inv-vacio">Sin definir. El instalador lo rellena en la primera visita.</p>`;
+
+    }
+
+    // Como etiquetas en línea y no como filas: ocupan solo lo que
+    // necesitan y la tarjeta no se estira para igualar a la de al lado.
+    const chips = claves.map(function(clave){
+
+        const etiqueta = BFW.Inmuebles.ETIQUETAS_CARACTERISTICAS[clave] || clave;
+        const valor = c[clave];
+
+        if(valor === true){
+
+            return `<span class="carac-chip carac-chip-si">✓ ${etiqueta}</span>`;
+
+        }
+
+        if(valor === false){
+
+            return `<span class="carac-chip carac-chip-no">✕ ${etiqueta}</span>`;
+
+        }
+
+        return `<span class="carac-chip carac-chip-dato"><strong>${valor}</strong> ${etiqueta.toLowerCase()}</span>`;
+
+    }).join("");
+
+    return `
+
+        <div class="carac-linea">
+
+            ${tipo ? `<span class="carac-tipo">${tipo}${subtipo ? ` · ${subtipo}` : ""}</span>` : ""}
+
+            ${chips || `<span class="inv-vacio">Sin características registradas.</span>`}
+
+        </div>
+
+    `;
+
+};
+
+/* --------------------------------------------------
+   Acciones sobre los productos de una estancia
+-------------------------------------------------- */
+
+BFW.Inmuebles.recargarInventario = function(){
+
+    BFW.Inmuebles.inventario = null;
+    BFW.App.render();
+
+};
+
+BFW.Inmuebles.anadirProducto = function(estanciaId){
+
+    const select = document.getElementById("inv-producto-" + estanciaId);
+    const cantidad = document.getElementById("inv-cantidad-" + estanciaId);
+
+    if(!select || !select.value){
+
+        BFW.UI.error("Elige un producto de la lista.");
+        return;
+
+    }
+
+    BFW.API.insertLinea({
+        estanciaId: estanciaId,
+        productoId: Number(select.value),
+        cantidad: Number(cantidad ? cantidad.value : 1) || 1,
+        estado: "Propuesto"
+    }, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido añadir.");
+            return;
+
+        }
+
+        BFW.Inmuebles.recargarInventario();
+
+    });
+
+};
+
+BFW.Inmuebles.cambiarEstadoLinea = function(id, estado){
+
+    BFW.API.updateLinea({ id: id, estado: estado }, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido actualizar.");
+            return;
+
+        }
+
+        BFW.Inmuebles.recargarInventario();
+
+    });
+
+};
+
+BFW.Inmuebles.cambiarCantidadLinea = function(id, cantidadActual){
+
+    BFW.UI.pedir({
+
+        titulo: "Cantidad",
+        aceptar: "Guardar",
+
+        campos: [
+            { id: "cantidad", etiqueta: "Unidades", tipo: "number", valor: cantidadActual }
+        ]
+
+    }, function(valores, mostrarError, cerrar){
+
+        const n = Number(valores.cantidad);
+
+        if(!n || n <= 0){
+
+            mostrarError("La cantidad tiene que ser mayor que cero.");
+            return;
+
+        }
+
+        BFW.API.updateLinea({ id: id, cantidad: n }, function(r){
+
+            if(r && r.ok === false){
+
+                mostrarError(r.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            cerrar();
+            BFW.Inmuebles.recargarInventario();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.editarObsLinea = function(id, actual){
+
+    BFW.UI.pedir({
+
+        titulo: "Observaciones del producto",
+        aceptar: "Guardar",
+
+        campos: [
+            { id: "obs", etiqueta: "", tipo: "textarea", valor: actual || "" }
+        ]
+
+    }, function(valores, mostrarError, cerrar){
+
+        BFW.API.updateLinea({ id: id, observaciones: valores.obs }, function(r){
+
+            if(r && r.ok === false){
+
+                mostrarError(r.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            cerrar();
+            BFW.Inmuebles.recargarInventario();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.editarObsEstancia = function(id, actual){
+
+    BFW.UI.pedir({
+
+        titulo: "Observaciones de la estancia",
+        aceptar: "Guardar",
+
+        campos: [
+            { id: "obs", etiqueta: "", tipo: "textarea", valor: actual || "" }
+        ]
+
+    }, function(valores, mostrarError, cerrar){
+
+        BFW.API.guardarObsEstancia(id, valores.obs, function(r){
+
+            if(r && r.ok === false){
+
+                mostrarError(r.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            cerrar();
+            BFW.Inmuebles.estancias = null;
+            BFW.Inmuebles.recargarInventario();
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.quitarLinea = function(id, nombre){
+
+    BFW.UI.confirmar('¿Quitar "' + nombre + '" de esta estancia?', function(){
+
+        BFW.API.deleteLinea(id, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido quitar.");
+                return;
+
+            }
+
+            BFW.Inmuebles.recargarInventario();
+
+        });
+
+    });
+
+};
+
+/* --------------------------------------------------
+   Render del inventario
+-------------------------------------------------- */
+
+BFW.Inmuebles.renderEstancias = function(inmuebleId){
+
+    if(BFW.Inmuebles.inventario === null || BFW.Inmuebles.inventarioDe !== inmuebleId){
+
+        BFW.Inmuebles.inventarioDe = inmuebleId;
+
+        BFW.API.getInventario(inmuebleId, function(r){
+
+            BFW.Inmuebles.inventario = r || { estancias: [], lineas: [], catalogo: [], fotos: [] };
+            BFW.App.render();
+
+        });
+
+        return `<p>Cargando estancias...</p>`;
+
+    }
+
+    const inv = BFW.Inmuebles.inventario;
+    const estancias = inv.estancias || [];
+    const puedeEditar = BFW.Auth.esAdmin();
+
+    // El catálogo va agrupado por familia: con cientos de referencias,
+    // una lista plana es inmanejable.
+    const familias = {};
+
+    (inv.catalogo || []).forEach(function(p){
+
+        const f = p.familia || "Sin clasificar";
+
+        if(!familias[f]) familias[f] = [];
+
+        familias[f].push(p);
+
+    });
+
+    const opcionesCatalogo = Object.keys(familias).sort().map(function(f){
+
+        return `<optgroup label="${f}">` +
+            familias[f].map(function(p){
+                return `<option value="${p.id}">${p.nombre}</option>`;
+            }).join("") +
+        `</optgroup>`;
+
+    }).join("");
+
+    const bloques = estancias.map(function(e){
+
+        const lineas = (inv.lineas || []).filter(function(l){
+            return Number(l.estanciaId) === Number(e.id);
+        });
+
+        const listaProductos = lineas.map(function(l){
+
+            const obsEscapada = String(l.observaciones || "").replace(/'/g, "\\'").replace(/\n/g, " ");
+
+            return `
+
+            <div class="inv-linea">
+
+                <div class="inv-linea-datos">
+
+                    <div class="inv-linea-nombre">
+                        ${l.cantidad} × ${l.productoNombre}
+                        <span class="inv-estado inv-estado-${String(l.estado).toLowerCase()}">${l.estado}</span>
+                    </div>
+
+                    ${l.observaciones ? `<div class="inv-obs">${l.observaciones}</div>` : ""}
+
+                </div>
+
+                ${puedeEditar ? `
+
+                <div class="inv-linea-acciones">
+
+                    ${l.estado === "Propuesto"
+                        ? `<button class="babex-btn-icon" title="Marcar instalado" onclick="BFW.Inmuebles.cambiarEstadoLinea(${l.id}, 'Instalado')">✓</button>`
+                        : `<button class="babex-btn-icon" title="Volver a propuesto" onclick="BFW.Inmuebles.cambiarEstadoLinea(${l.id}, 'Propuesto')">↺</button>`}
+
+                    <button class="babex-btn-icon" title="Cantidad" onclick="BFW.Inmuebles.cambiarCantidadLinea(${l.id}, ${l.cantidad})">#</button>
+                    <button class="babex-btn-icon" title="Observaciones" onclick="BFW.Inmuebles.editarObsLinea(${l.id}, '${obsEscapada}')">✎</button>
+                    <button class="babex-btn-icon" title="Quitar" onclick="BFW.Inmuebles.quitarLinea(${l.id}, '${String(l.productoNombre).replace(/'/g, "\\'")}')">🗑️</button>
+
+                </div>
+
+                ` : ""}
+
+            </div>
+
+            `;
+
+        }).join("");
+
+        const obsEstanciaEscapada = String(e.observaciones || "").replace(/'/g, "\\'").replace(/\n/g, " ");
+
+        const fotosEstancia = (inv.fotos || []).filter(function(f){
+            return Number(f.estanciaId) === Number(e.id);
+        });
+
+        return `
+
+        <div class="inv-estancia">
+
+            <div class="inv-estancia-cabecera">
+
+                <div>
+                    <div class="inv-estancia-nombre">${e.nombre}</div>
+                    <div class="inv-estancia-meta">${lineas.length} producto${lineas.length === 1 ? "" : "s"}${fotosEstancia.length ? " · " + fotosEstancia.length + " foto" + (fotosEstancia.length === 1 ? "" : "s") : ""}</div>
+                </div>
+
+                ${puedeEditar ? `
+
+                <div class="inv-linea-acciones">
+                    <button class="babex-btn-icon" title="Añadir foto" onclick="BFW.Inmuebles.elegirFotoEstancia(${inmuebleId}, ${e.id})">📷</button>
+                    <button class="babex-btn-icon" title="Observaciones" onclick="BFW.Inmuebles.editarObsEstancia(${e.id}, '${obsEstanciaEscapada}')">✎</button>
+                    <button class="babex-btn-icon" title="Eliminar estancia" onclick="BFW.Inmuebles.eliminarEstancia(${e.id}, '${String(e.nombre).replace(/'/g, "\\'")}')">🗑️</button>
+                </div>
+
+                ` : ""}
+
+            </div>
+
+            ${e.observaciones ? `<div class="inv-obs">${e.observaciones}</div>` : ""}
+
+            ${fotosEstancia.length ? `<div class="inv-fotos">${BFW.UI.galeria(fotosEstancia)}</div>` : ""}
+
+            ${listaProductos || `<p class="inv-vacio">Sin productos.</p>`}
+
+            ${puedeEditar ? `
+
+            <div class="inv-anadir">
+
+                <select id="inv-producto-${e.id}" class="babex-input">
+                    <option value="">Añadir producto...</option>
+                    ${opcionesCatalogo}
+                </select>
+
+                <input id="inv-cantidad-${e.id}" class="babex-input inv-cantidad" type="number" min="1" value="1">
+
+                <button class="babex-btn-secondary" onclick="BFW.Inmuebles.anadirProducto(${e.id})">Añadir</button>
+
+            </div>
+
+            ` : ""}
+
+        </div>
+
+        `;
+
+    }).join("");
+
+    // Fotos que llegaron al inmueble (por ejemplo, desde el móvil como
+    // "foto general") sin quedar ligadas a ninguna estancia concreta.
+    // Se muestran aparte para poder asignarlas a una si corresponde.
+    const fotosSinEstancia = (inv.fotos || []).filter(function(f){ return !f.estanciaId; });
+
+    return `
+
+        ${bloques
+            ? `<div class="inv-rejilla">${bloques}</div>`
+            : `<p>Todavía no hay estancias registradas.</p>`}
+
+        <button class="babex-btn-secondary inmueble-module-btn" onclick="BFW.Inmuebles.anadirEstancia()">+ Añadir estancia</button>
+
+        ${fotosSinEstancia.length ? `
+
+        <div class="inv-estancia inv-sin-estancia">
+
+            <div class="inv-estancia-cabecera">
+                <div>
+                    <div class="inv-estancia-nombre">Fotos sin estancia asignada</div>
+                    <div class="inv-estancia-meta">${fotosSinEstancia.length} foto${fotosSinEstancia.length === 1 ? "" : "s"}</div>
+                </div>
+            </div>
+
+            <div class="inv-fotos-asignar-lista">
+                ${fotosSinEstancia.map(function(f){
+
+                    return `
+
+                    <div class="inv-foto-asignar">
+
+                        ${BFW.UI.galeria([f])}
+
+                        ${puedeEditar && estancias.length ? `
+
+                        <select class="babex-input inv-foto-asignar-select"
+                            onchange="BFW.Inmuebles.asignarFotoAEstancia(${f.id}, this.value)">
+                            <option value="">Asignar a...</option>
+                            ${estancias.map(function(e){ return `<option value="${e.id}">${e.nombre}</option>`; }).join("")}
+                        </select>
+
+                        ` : ""}
+
+                    </div>
+
+                    `;
+
+                }).join("")}
+            </div>
+
+        </div>
+
+        ` : ""}
+
+    `;
+
+};
+
+/**
+ * Abre el selector de archivos del navegador (no la cámara: esto es
+ * desde el ordenador de la oficina) y sube la foto elegida a la
+ * estancia indicada.
+ */
+BFW.Inmuebles.elegirFotoEstancia = function(inmuebleId, estanciaId){
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.style.display = "none";
+
+    input.onchange = function(){
+
+        const archivos = input.files ? Array.prototype.slice.call(input.files) : [];
+
+        if(input.parentNode) input.parentNode.removeChild(input);
+
+        if(!archivos.length) return;
+
+        BFW.Inmuebles._subirFotosEstancia(archivos, 0, inmuebleId, estanciaId);
+
+    };
+
+    document.body.appendChild(input);
+    input.click();
+
+};
+
+BFW.Inmuebles._subirFotosEstancia = function(archivos, indice, inmuebleId, estanciaId){
+
+    if(indice >= archivos.length){
+
+        BFW.UI.success(archivos.length === 1 ? "Foto guardada." : archivos.length + " fotos guardadas.");
+        BFW.Inmuebles.inventario = null;
+        BFW.App.render();
+        return;
+
+    }
+
+    const archivo = archivos[indice];
+    const lector = new FileReader();
+
+    lector.onload = function(e){
+
+        const base64 = String(e.target.result).split(",")[1];
+
+        BFW.API.subirFotoEstancia({
+            inmuebleId: inmuebleId,
+            estanciaId: estanciaId,
+            nombreOriginal: archivo.name,
+            mimeType: archivo.type,
+            base64: base64
+        }, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error((r.error || "No se ha podido subir una foto.") +
+                    (archivos.length > 1 ? " (" + (indice + 1) + "/" + archivos.length + ")" : ""));
+
+            }
+
+            BFW.Inmuebles._subirFotosEstancia(archivos, indice + 1, inmuebleId, estanciaId);
+
+        });
+
+    };
+
+    lector.onerror = function(){
+
+        BFW.UI.error("No se ha podido leer una foto.");
+        BFW.Inmuebles._subirFotosEstancia(archivos, indice + 1, inmuebleId, estanciaId);
+
+    };
+
+    lector.readAsDataURL(archivo);
+
+};
+
+BFW.Inmuebles.asignarFotoAEstancia = function(documentoId, estanciaId){
+
+    if(!estanciaId) return;
+
+    BFW.API.asignarEstanciaFoto(documentoId, estanciaId, function(r){
+
+        if(r && r.ok === false){
+
+            BFW.UI.error(r.error || "No se ha podido asignar la foto.");
+            return;
+
+        }
+
+        BFW.UI.success("Foto asignada.");
+        BFW.Inmuebles.inventario = null;
+        BFW.App.render();
+
+    });
+
+};
+
+/**
+ * Carga todo lo que el módulo necesita: inmuebles, clientes y
+ * documentos. Es lo que usa BFW.irAFicha para que la ficha aparezca
+ * completa se llegue por donde se llegue.
+ */
+BFW.Inmuebles.cargarTodo = function(callback){
+
+    if(BFW.yaSeEstaCargando(BFW.Inmuebles, callback)) return;
+
+    let pendientes = 3;
+
+    function comprobar(){
+
+        pendientes--;
+
+        if(pendientes === 0){
+
+            BFW.cargaTerminada(BFW.Inmuebles);
+
+            if(callback) callback();
+
+        }
+
+    }
+
+    if(BFW.Inmuebles.data !== null){
+
+        comprobar();
+
+    } else {
+
+        BFW.API.getInmuebles(function(datos){
+
+            BFW.Inmuebles.data = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    }
+
+    if(BFW.Inmuebles.personas !== null){
+
+        comprobar();
+
+    } else {
+
+        BFW.API.getPersonas(function(datos){
+
+            BFW.Inmuebles.personas = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    }
+
+    BFW.Inmuebles.cargarDocumentos(comprobar);
+
+};
+
+BFW.Inmuebles.load = function(){
+
+    BFW.API.getInmuebles(function(datos){
+
+        BFW.Inmuebles.data = Array.isArray(datos) ? datos : [];
+
+        function cargarPersonas(callback){
+
+            if(BFW.Inmuebles.personas !== null){
+                callback();
+                return;
+            }
+
+            BFW.API.getPersonas(function(personas){
+
+                BFW.Inmuebles.personas = Array.isArray(personas) ? personas : [];
+                callback();
+
+            });
+
+        }
+
+        function cargarDocumentos(callback){
+
+            if(BFW.Inmuebles.documentos !== null){
+                callback();
+                return;
+            }
+
+            BFW.API.getDocumentos(function(documentos){
+
+                BFW.Inmuebles.documentos = Array.isArray(documentos) ? documentos : [];
+                callback();
+
+            });
+
+        }
+
+        cargarPersonas(function(){
+
+            cargarDocumentos(function(){
+
+                BFW.App.render();
+
+            });
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.documentosDe = function(inmuebleId){
+
+    if(!BFW.Inmuebles.documentos){
+        return [];
+    }
+
+    return BFW.Inmuebles.documentos.filter(function(d){
+        return Number(d.inmuebleId) === Number(inmuebleId);
+    });
+
+};
+
+BFW.Inmuebles.cargarDocumentos = function(callback){
+
+    if(BFW.Inmuebles.documentos !== null){
+
+        callback();
+        return;
+
+    }
+
+    BFW.API.getDocumentos(function(datos){
+
+        BFW.Inmuebles.documentos = Array.isArray(datos) ? datos : [];
+        callback();
+
+    });
+
+};
+
+BFW.Inmuebles.nombrePersona = function(personaId){
+
+    if(!personaId) return "Sin cliente asignado";
+
+    // Igual que en el desplegable: puede que aún no estén cargados.
+    if(!BFW.Inmuebles.asegurarPersonas()) return "Cargando...";
+
+    if(!BFW.Inmuebles.personas){
+
+        return "Sin cliente asignado";
+
+    }
+
+    const p = BFW.Inmuebles.personas.find(function(x){
+        return Number(x.id) === Number(personaId);
+    });
+
+    return p ? (p.nombre + " " + p.apellidos) : "Cliente no encontrado";
+
+};
+
+BFW.Inmuebles.buscar = function(txt){
+
+    BFW.Inmuebles.filtro = (txt||"").toLowerCase();
+
+    document.querySelector(".inmuebles-list").innerHTML = BFW.Inmuebles.renderCards();
+
+};
+
+BFW.Inmuebles.filtrarTipo = function(tipo){
+
+    BFW.Inmuebles.tipoFiltro = tipo;
+
+    document.querySelector(".inmuebles-list").innerHTML = BFW.Inmuebles.renderCards();
+
+    document.querySelector(".inmuebles-filtros").innerHTML = BFW.Inmuebles.renderFiltros();
+
+};
+
+BFW.Inmuebles.renderFiltros = function(){
+
+    return `
+
+    <button
+        class="inmueble-chip inmueble-chip-todos ${BFW.Inmuebles.tipoFiltro=='TODOS'?'activo':''}"
+        onclick="BFW.Inmuebles.filtrarTipo('TODOS')">
+
+        Todos
+
+    </button>
+
+    <button
+        class="inmueble-chip inmueble-chip-vivienda ${BFW.Inmuebles.tipoFiltro=='Vivienda'?'activo':''}"
+        onclick="BFW.Inmuebles.filtrarTipo('Vivienda')">
+
+        Viviendas
+
+    </button>
+
+    <button
+        class="inmueble-chip inmueble-chip-local ${BFW.Inmuebles.tipoFiltro=='Local'?'activo':''}"
+        onclick="BFW.Inmuebles.filtrarTipo('Local')">
+
+        Locales
+
+    </button>
+
+    <button
+        class="inmueble-chip inmueble-chip-nave ${BFW.Inmuebles.tipoFiltro=='Nave'?'activo':''}"
+        onclick="BFW.Inmuebles.filtrarTipo('Nave')">
+
+        Naves
+
+    </button>
+
+    `;
+
+};
+
+BFW.Inmuebles.badgeTipo = function(tipo){
+
+    switch(tipo){
+
+        case "Vivienda":
+            return `<span class="badge badge-vivienda">Vivienda</span>`;
+
+        case "Local":
+            return `<span class="badge badge-local">Local</span>`;
+
+        case "Nave":
+            return `<span class="badge badge-nave">Nave</span>`;
+
+        case "Comunidad":
+            return `<span class="badge badge-comunidad">Comunidad</span>`;
+
+        default:
+            return `<span class="badge">${tipo || "Otro"}</span>`;
+
+    }
+
+};
+
+/**
+ * Abre el formulario de inmueble nuevo.
+ *
+ * Admite un preset (por ejemplo { personaId: 12 }) para llegar con el
+ * cliente ya elegido desde su ficha.
+ */
+BFW.Inmuebles.nueva = function(preset){
+
+    BFW.Inmuebles.current = null;
+
+    BFW.Inmuebles.editando = false;
+
+    BFW.Inmuebles.preset = preset || null;
+
+    BFW.Inmuebles.view = "FORM";
+
+    BFW.App.render();
+
+};
+
+BFW.Inmuebles.back = function(){
+
+    BFW.Inmuebles.editando = false;
+
+    BFW.Inmuebles.view = "LIST";
+
+    // Si se llegó aquí desde un acceso directo de otra pantalla, se
+    // regresa a ella en vez de quedarse en el listado de inmuebles.
+    if(BFW.Router.regresar()) return;
+
+    BFW.App.render();
+
+};
+
+BFW.Inmuebles.guardarNueva = function(){
+
+    const inmueble = {
+
+        personaId: document.getElementById("inm_personaId").value || "",
+
+        direccion: document.getElementById("inm_direccion").value.trim(),
+
+        ciudad: document.getElementById("inm_ciudad").value.trim(),
+
+        tipo: document.getElementById("inm_tipo").value,
+
+        observaciones: document.getElementById("inm_observaciones").value.trim()
+
+    };
+
+    if(inmueble.direccion === ""){
+
+        alert("Introduce la dirección.");
+
+        return;
+
+    }
+
+    BFW.API.insertInmueble(inmueble, function(){
+
+        BFW.Inmuebles.view = "LIST";
+
+        BFW.Inmuebles.editando = false;
+
+        BFW.Inmuebles.current = null;
+
+        BFW.Inmuebles.load();
+
+        if(typeof BFW.Personas !== "undefined"){
+
+            BFW.Personas.inmuebles = null;
+
+        }
+
+    });
+
+};
+
+BFW.Inmuebles.guardarEdicion = function(){
+
+    const inmueble = {
+
+        id: BFW.Inmuebles.current,
+
+        personaId: document.getElementById("inm_personaId").value || "",
+
+        direccion: document.getElementById("inm_direccion").value.trim(),
+
+        ciudad: document.getElementById("inm_ciudad").value.trim(),
+
+        tipo: document.getElementById("inm_tipo").value,
+
+        observaciones: document.getElementById("inm_observaciones").value.trim()
+
+    };
+
+    BFW.API.updateInmueble(inmueble, function(){
+
+        BFW.Inmuebles.load();
+
+        BFW.Inmuebles.back();
+
+        if(typeof BFW.Personas !== "undefined"){
+
+            BFW.Personas.inmuebles = null;
+
+        }
+
+    });
+
+};
+
+BFW.Inmuebles.eliminar = function(){
+
+    BFW.UI.confirmar("¿Eliminar este inmueble?", function(){
+
+        BFW.API.deleteInmueble(BFW.Inmuebles.current, function(){
+
+            BFW.Inmuebles.current = null;
+
+            BFW.Inmuebles.view = "LIST";
+
+            BFW.Inmuebles.load();
+
+            if(typeof BFW.Personas !== "undefined"){
+
+                BFW.Personas.inmuebles = null;
+
+            }
+
+        });
+
+    });
+
+};
+
+BFW.Inmuebles.renderCards = function(){
+
+    let html = "";
+
+    let inmuebles = [...BFW.Inmuebles.data];
+
+    inmuebles = inmuebles.filter(function(i){
+
+        if(BFW.Inmuebles.tipoFiltro === "TODOS"){
+
+            return true;
+
+        }
+
+        return i.tipo === BFW.Inmuebles.tipoFiltro;
+
+    });
+
+    if(BFW.Inmuebles.filtro !== ""){
+
+        inmuebles = inmuebles.filter(function(i){
+
+            return (
+                (i.direccion||"") + " " +
+                (i.ciudad||"") + " " +
+                (i.tipo||"") + " " +
+                BFW.Inmuebles.nombrePersona(i.personaId)
+            ).toLowerCase().includes(BFW.Inmuebles.filtro);
+
+        });
+
+    }
+
+    inmuebles.sort(function(a,b){
+        return (a.direccion||"").localeCompare(b.direccion||"","es");
+    });
+
+    inmuebles.forEach(function(i){
+
+        html += `
+
+        <div class="inmueble-list-card ${Number(BFW.Inmuebles.current)==Number(i.id)?"inmueble-list-card-active":""}"
+            onclick="BFW.Inmuebles.seleccionar(${i.id})">
+
+            <div class="inmueble-list-avatar tipo-${(i.tipo||"otro").toLowerCase()}">
+
+                🏠
+
+            </div>
+
+            <div class="inmueble-list-info">
+
+                <div class="inmueble-list-name">
+                    ${i.direccion || "Sin dirección"}
+                </div>
+
+                <div class="inmueble-list-sub">
+                    ${i.ciudad || ""}
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    });
+
+    return html;
+
+};
+
+BFW.Inmuebles.seleccionar = function(id){
+
+    const lista = document.querySelector(".inmuebles-list");
+    const scroll = lista ? lista.scrollTop : 0;
+
+    BFW.Inmuebles.current = Number(id);
+
+    BFW.Inmuebles.editando = false;
+
+    BFW.Inmuebles.cargarDocumentos(function(){
+
+        BFW.App.render();
+
+        requestAnimationFrame(function(){
+
+            const listaNueva = document.querySelector(".inmuebles-list");
+
+            if(listaNueva){
+
+                listaNueva.scrollTop = scroll;
+
+            }
+
+        });
+
+    });
+
+};
+
+/**
+ * Se asegura de tener la lista de clientes cargada.
+ *
+ * Hace falta porque a la ficha de un inmueble se puede llegar sin
+ * pasar por su listado (desde el buscador, desde la ficha de una
+ * persona o desde una cita), y en esos casos load() no se ejecuta:
+ * sin esto, el desplegable de cliente sale vacío y parece que el
+ * inmueble no tiene ninguno asignado.
+ */
+BFW.Inmuebles._cargandoPersonas = false;
+
+BFW.Inmuebles.asegurarPersonas = function(){
+
+    if(BFW.Inmuebles.personas !== null) return true;
+
+    if(BFW.Inmuebles._cargandoPersonas) return false;
+
+    BFW.Inmuebles._cargandoPersonas = true;
+
+    BFW.API.getPersonas(function(datos){
+
+        BFW.Inmuebles.personas = Array.isArray(datos) ? datos : [];
+        BFW.Inmuebles._cargandoPersonas = false;
+        BFW.App.render();
+
+    });
+
+    return false;
+
+};
+
+BFW.Inmuebles.renderSelectPersonas = function(personaIdActual){
+
+    if(!BFW.Inmuebles.asegurarPersonas()){
+
+        // Mientras llegan, se conserva el cliente que ya tenía para no
+        // borrarlo sin querer si se guarda antes de que cargue.
+        return `<option value="${personaIdActual || ""}">Cargando clientes...</option>`;
+
+    }
+
+    let opciones = `<option value="">Sin cliente asignado</option>`;
+
+    (BFW.Inmuebles.personas || []).forEach(function(p){
+
+        opciones += `<option value="${p.id}" ${Number(personaIdActual)===Number(p.id)?"selected":""}>${p.nombre} ${p.apellidos}</option>`;
+
+    });
+
+    return opciones;
+
+};
+
+BFW.Inmuebles.renderLista = function(){
+
+    return `
+
+    <div class="inmuebles-panel">
+
+        <div class="inmuebles-header-panel">
+
+            <div class="inmuebles-toolbar">
+
+                <div class="inmuebles-search">
+
+                    <span class="inmuebles-search-icon">🔍</span>
+
+                    <input
+                        id="txtBuscarInmueble"
+                        class="babex-input"
+                        placeholder="Buscar inmuebles..."
+                        value="${BFW.Inmuebles.filtro}"
+                        oninput="BFW.Inmuebles.buscar(this.value)">
+
+                </div>
+
+                <button
+                    class="babex-btn babex-btn-primary inmuebles-btn-add"
+                    onclick="BFW.Inmuebles.nueva()">
+
+                    + Nuevo
+
+                </button>
+
+            </div>
+
+            <div class="inmuebles-filtros">
+                ${BFW.Inmuebles.renderFiltros()}
+            </div>
+
+            <div class="inmuebles-resumen">
+
+                <span>
+                    <strong>${BFW.Inmuebles.data.length}</strong> inmuebles
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="inmuebles-list">
+            ${BFW.Inmuebles.renderCards()}
+        </div>
+
+    </div>
+
+    `;
+
+};
+
+BFW.Inmuebles.renderFormularioBase = function(i, modo){
+
+    i = i || {};
+    modo = modo || "nuevo";
+
+    const editando = modo === "editar";
+
+    return `
+
+    <div class="inmueble-form-wrapper">
+
+        <div class="card inmueble-form-card">
+
+            <div class="babex-panel-title">
+
+                <h2>
+                    ${editando ? "✏ Editar inmueble" : "🏡 Nuevo inmueble"}
+                </h2>
+
+                <p>
+                    ${editando
+                        ? "Modifica los datos de la propiedad."
+                        : "Da de alta una vivienda, local o nave."
+                    }
+                </p>
+
+            </div>
+
+            <div class="inmueble-form-section">
+
+                <h3>🏡 Datos del inmueble</h3>
+
+                <div class="inmueble-form-grid">
+
+                    <div class="inmueble-campo">
+                        <label>Dirección *</label>
+                        <input id="inm_direccion" class="babex-input" value="${i.direccion || ""}">
+                    </div>
+
+                    <div class="inmueble-campo">
+                        <label>Ciudad</label>
+                        <input id="inm_ciudad" class="babex-input" value="${i.ciudad || ""}">
+                    </div>
+
+                    <div class="inmueble-campo">
+                        <label>Tipo</label>
+                        <select id="inm_tipo" class="babex-input">
+                            <option ${i.tipo=="Vivienda"?"selected":""}>Vivienda</option>
+                            <option ${i.tipo=="Local"?"selected":""}>Local</option>
+                            <option ${i.tipo=="Nave"?"selected":""}>Nave</option>
+                            <option ${i.tipo=="Comunidad"?"selected":""}>Comunidad</option>
+                            <option ${i.tipo=="Otro"?"selected":""}>Otro</option>
+                        </select>
+                    </div>
+
+                    <div class="inmueble-campo">
+                        <label>Cliente</label>
+                        <select id="inm_personaId" class="babex-input">
+                            ${BFW.Inmuebles.renderSelectPersonas(i.personaId)}
+                        </select>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="inmueble-form-section">
+
+                <div class="inmueble-observaciones-layout">
+
+                    <div class="inmueble-campo">
+                        <label>📝 Observaciones</label>
+                        <textarea
+                            id="inm_observaciones"
+                            class="babex-input inmueble-observaciones-input"
+                            placeholder="Añade cualquier información relevante sobre el inmueble...">${i.observaciones || ""}</textarea>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="inmueble-form-footer">
+
+                <div class="inmueble-form-buttons">
+
+                    <button class="babex-btn babex-btn-secondary" onclick="BFW.Inmuebles.back()">
+                        Cancelar
+                    </button>
+
+                    <button
+                        class="babex-btn babex-btn-primary"
+                        onclick="${editando ? 'BFW.Inmuebles.guardarEdicion()' : 'BFW.Inmuebles.guardarNueva()'}">
+
+                        ${editando ? "Guardar cambios" : "Guardar inmueble"}
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    `;
+
+};
+
+BFW.Inmuebles.renderFormulario = function(){
+
+    // El preset trae el cliente ya elegido si se viene de su ficha.
+    return BFW.Inmuebles.renderFormularioBase(BFW.Inmuebles.preset || {}, "nuevo");
+
+};
+
+BFW.Inmuebles.renderFormularioEdicion = function(i){
+
+    return BFW.Inmuebles.renderFormularioBase(i, "editar");
+
+};
+
+BFW.Inmuebles.renderDetalle = function(){
+
+    if(!BFW.Inmuebles.current){
+
+        return `
+
+        <div class="card inmueble-empty">
+            <h2>🏡 Inmuebles</h2>
+            <p>Selecciona un inmueble de la lista.</p>
+        </div>
+
+        `;
+
+    }
+
+    const i = BFW.Inmuebles.data.find(function(x){
+        return Number(x.id) === Number(BFW.Inmuebles.current);
+    });
+
+    if(!i){
+
+        return `
+
+        <div class="card inmueble-empty">
+            <h2>🏡 Inmuebles</h2>
+            <p>El inmueble ya no existe.</p>
+        </div>
+
+        `;
+
+    }
+
+    return BFW.Inmuebles.renderDetalleLectura(i);
+
+};
+
+BFW.Inmuebles.renderDetalleLectura = function(i){
+
+    return `
+
+    <div class="inmueble-detail">
+
+        <div class="inmueble-top">
+
+            <div class="inmueble-identidad">
+
+                <div class="inmueble-avatar-lg tipo-${(i.tipo||"otro").toLowerCase()}">
+                    🏠
+                </div>
+
+                <div>
+
+                    <h2 class="inmueble-title">
+                        ${i.direccion || "Sin dirección"}
+                    </h2>
+
+                    <div class="inmueble-subtitle">
+                        ${i.ciudad || ""} ${BFW.Inmuebles.badgeTipo(i.tipo)}
+                    </div>
+
+                </div>
+
+            </div>
+
+            ${BFW.Auth.esAdmin() ? `<div style="display:flex;gap:10px;">
+
+                <button
+                    class="babex-btn babex-btn-primary"
+                    onclick="BFW.Inmuebles.editando=true;BFW.Inmuebles.view='FORM';BFW.App.render();">
+
+                    ✏ Editar
+
+                </button>
+
+                <button
+                    class="babex-btn babex-btn-danger"
+                    onclick="BFW.Inmuebles.eliminar()">
+
+                    🗑 Eliminar
+
+                </button>
+
+            </div>` : ""}
+
+        </div>
+
+        <!--
+            El orden sigue cómo se consulta una ficha en la práctica:
+            de quién es y qué es → qué tiene dentro → cuánto cuesta →
+            notas y papeles. Lo que más se mira, arriba.
+        -->
+
+        ${BFW.Inmuebles.renderCabeceraDatos(i)}
+
+        <div class="inmueble-bloque">
+            <h3>🚪 Estancias y equipamiento</h3>
+            ${BFW.Inmuebles.renderEstancias(i.id)}
+        </div>
+
+        <div class="inmueble-bloque">
+            <h3>💶 Presupuestos</h3>
+            ${BFW.Inmuebles.renderPresupuestos(i.id)}
+        </div>
+
+        <div class="inmueble-columnas">
+
+            <div class="inmueble-bloque">
+
+                <h3>📄 Documentos</h3>
+
+                ${BFW.Documentos.renderMiniLista(BFW.Inmuebles.documentosDe(i.id), {modulo:'inmuebles', id:i.id})}
+
+                ${
+                    i.personaId
+                        ? `<button class="babex-btn babex-btn-secondary" style="margin-top:14px; width:100%;" onclick="BFW.Documentos.nuevoDesde({vinculo:'cliente', personaId:${i.personaId}, inmuebleId:${i.id}}, {modulo:'inmuebles', id:${i.id}})">+ Añadir documento</button>`
+                        : `<p class="documentos-mini-empty" style="margin-top:10px;">Asigna primero un cliente a este inmueble para poder vincular documentos.</p>`
+                }
+
+            </div>
+
+            <div class="inmueble-bloque">
+                <h3>📝 Observaciones</h3>
+                <div class="inmueble-observaciones">
+                    ${i.observaciones || "Sin observaciones."}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    `;
+
+};
+
+/**
+ * Franja superior con lo que identifica al inmueble: de quién es,
+ * dónde está, qué es y un recuento de lo que hay dentro.
+ *
+ * Va todo junto en una sola banda en vez de en tarjetas separadas
+ * porque son cuatro datos cortos: en tarjetas quedaban tres recuadros
+ * medio vacíos ocupando media pantalla.
+ */
+BFW.Inmuebles.renderCabeceraDatos = function(i){
+
+    const inv = (BFW.Inmuebles.inventario && BFW.Inmuebles.inventarioDe === i.id)
+        ? BFW.Inmuebles.inventario
+        : null;
+
+    const presupuestos = (BFW.Inmuebles.presupuestos && BFW.Inmuebles.presupuestosDe === i.id)
+        ? BFW.Inmuebles.presupuestos
+        : null;
+
+    const estancias = inv ? (inv.estancias || []).length : null;
+    const lineas = inv ? (inv.lineas || []) : null;
+    const instalados = lineas ? lineas.filter(function(l){ return l.estado === "Instalado"; }).length : null;
+    const propuestos = lineas ? lineas.filter(function(l){ return l.estado === "Propuesto"; }).length : null;
+
+    function dato(etiqueta, valor, alPulsar){
+
+        return `
+
+        <div class="inm-dato ${alPulsar ? "inm-dato-pulsable" : ""}" ${alPulsar ? `onclick="${alPulsar}"` : ""}>
+            <span>${etiqueta}</span>
+            <strong>${valor}</strong>
+        </div>
+
+        `;
+
+    }
+
+    return `
+
+    <div class="inmueble-banda">
+
+        <div class="inm-datos">
+
+            ${dato("Cliente",
+                   BFW.Inmuebles.nombrePersona(i.personaId),
+                   i.personaId ? `BFW.irAFicha('personas', ${i.personaId})` : "")}
+
+            ${dato("Ciudad", i.ciudad || "—")}
+
+            ${dato("Tipo", (i.tipo || "Sin definir") + (i.subtipo ? " · " + i.subtipo : ""))}
+
+            ${estancias !== null ? dato("Estancias", estancias) : ""}
+            ${instalados !== null ? dato("Instalados", instalados) : ""}
+            ${propuestos !== null ? dato("Propuestos", propuestos) : ""}
+            ${presupuestos !== null ? dato("Presupuestos", presupuestos.length) : ""}
+
+        </div>
+
+        <div class="inm-caracteristicas">
+            ${BFW.Inmuebles.renderCaracteristicas(i)}
+        </div>
+
+    </div>
+
+    `;
+
+};
+
+BFW.Inmuebles.render = function(){
+
+    if(BFW.Inmuebles.data === null){
+
+        BFW.Inmuebles.load();
+
+        return `
+
+        <div class="inmueble-empty">
+            <p>Cargando inmuebles...</p>
+        </div>
+
+        `;
+
+    }
+
+    if(BFW.Inmuebles.view === "FORM"){
+
+        return `
+
+        <div class="inmueble-editor-page">
+
+            <div class="inmueble-editor-header">
+
+                <button class="babex-btn babex-btn-secondary" onclick="BFW.Inmuebles.back()">
+                    ← Volver
+                </button>
+
+                <div>
+
+                    <h2>
+                        ${BFW.Inmuebles.editando ? "Editar inmueble" : "Nuevo inmueble"}
+                    </h2>
+
+                    <p>
+                        ${BFW.Inmuebles.editando
+                            ? "Modifica la información del inmueble."
+                            : "Introduce los datos de la nueva propiedad."
+                        }
+                    </p>
+
+                </div>
+
+            </div>
+
+            <div class="inmueble-editor">
+
+                ${
+                    BFW.Inmuebles.editando
+                        ? BFW.Inmuebles.renderFormularioEdicion(
+                            BFW.Inmuebles.data.find(function(x){
+                                return Number(x.id) === Number(BFW.Inmuebles.current);
+                            })
+                          )
+                        : BFW.Inmuebles.renderFormulario()
+                }
+
+            </div>
+
+        </div>
+
+        `;
+
+    }
+
+    return `
+
+    <div class="dashboard">
+
+        <div class="dashboard-title inmuebles-header">
+
+            <div>
+                <h2>Inmuebles</h2>
+                <p>Viviendas, locales y naves gestionadas por BABEX.</p>
+            </div>
+
+            <button class="babex-btn babex-btn-primary" onclick="BFW.Inmuebles.nueva()">
+                + Nuevo inmueble
+            </button>
+
+        </div>
+
+        <div class="bfw-master-detail">
+
+            <aside class="bfw-panel">
+
+                <div class="bfw-panel-body">
+                    ${BFW.Inmuebles.renderLista()}
+                </div>
+
+            </aside>
+
+            <section class="bfw-panel">
+
+                <div class="bfw-panel-body">
+
+                    ${
+                        BFW.Inmuebles.current
+                            ? BFW.Inmuebles.renderDetalle()
+                            : `
+
+                            <div class="inmueble-empty">
+
+                                <div class="inmueble-empty-icon">🏡</div>
+
+                                <h2>Bienvenido al módulo Inmuebles</h2>
+
+                                <p>Gestiona viviendas, locales y naves desde un único lugar.</p>
+
+                                <div class="inmueble-empty-stats">
+
+                                    <div class="inmueble-empty-stat">
+                                        <strong>${BFW.Inmuebles.data.length}</strong>
+                                        <span>Inmuebles</span>
+                                    </div>
+
+                                </div>
+
+                                <div class="inmueble-empty-help">
+                                    ← Selecciona un inmueble de la lista para ver su información.
+                                </div>
+
+                            </div>
+
+                            `
+                    }
+
+                </div>
+
+            </section>
+
+        </div>
+
+    </div>
+
+    `;
+
+};
+
+</script>

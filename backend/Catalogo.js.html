@@ -1,0 +1,588 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Catalogo.js
+    Versión : 0.1.0
+    ==================================================
+    Catálogo de productos y servicios. Es la base del futuro motor de
+    presupuestos: por eso los productos llevan precio y referencia, y
+    no son texto libre.
+
+    TODOS LOS PRECIOS SIN IVA.
+
+    El COSTE solo lo ve el Admin (el servidor ni siquiera lo envía al
+    resto), porque es información de márgenes.
+    ==================================================
+    */
+
+    BFW.Catalogo = {
+
+        data: null,
+        config: null,
+        filtro: "",
+        filtroTipo: "TODOS",
+        filtroFamilia: "TODAS",
+        verInactivos: false,
+        view: "lista",     // "lista" | "formulario"
+        editando: null
+
+    };
+
+    BFW.Catalogo.TIPOS = ["Hardware", "Servicio", "Mano de obra"];
+    BFW.Catalogo.UNIDADES = ["Unidad", "Metro", "Hora", "Conjunto"];
+
+    // Familias de partida. Se pueden cambiar desde Administración
+    // (clave CATALOGO_FAMILIAS) sin tocar código.
+    BFW.Catalogo.FAMILIAS_POR_DEFECTO = [
+        "Relés y control",
+        "Iluminación",
+        "Persianas y motores",
+        "Climatización",
+        "Enchufes y consumo",
+        "Sensores",
+        "Seguridad y cámaras",
+        "Accesos y cerraduras",
+        "Red y conectividad",
+        "Accesorios",
+        "Packs",
+        "Mano de obra"
+    ];
+
+    /**
+     * Familias disponibles: las de Administración si existen, si no las
+     * de partida.
+     */
+    BFW.Catalogo.familiasDisponibles = function(){
+
+        return BFW.Config.obtenerLista(BFW.Catalogo.config, "CATALOGO_FAMILIAS", BFW.Catalogo.FAMILIAS_POR_DEFECTO);
+
+    };
+
+    BFW.Catalogo.escapar = function(texto){
+
+        return String(texto == null ? "" : texto)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+    };
+
+    BFW.Catalogo.euros = function(valor){
+
+        const numero = Number(valor) || 0;
+
+        return numero.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+    };
+
+    /* ==================================================
+       API
+    ================================================== */
+
+    BFW.API.getCatalogo = function(callback){
+
+        google.script.run
+            .withSuccessHandler(function(datos){ callback(datos); })
+            .withFailureHandler(function(error){ console.error(error); callback([]); })
+            .apiGetCatalogo(BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.insertProducto = function(producto, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(error){ console.error(error); callback({ ok:false, error:"Error guardando el producto." }); })
+            .apiInsertProducto(producto, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.updateProducto = function(producto, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(error){ console.error(error); callback({ ok:false, error:"Error actualizando el producto." }); })
+            .apiUpdateProducto(producto, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.deleteProducto = function(id, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(error){ console.error(error); callback({ ok:false, error:"Error eliminando el producto." }); })
+            .apiDeleteProducto(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("getCatalogo");
+    BFW.UI.engancharCarga("insertProducto");
+    BFW.UI.engancharCarga("updateProducto");
+    BFW.UI.engancharCarga("deleteProducto");
+
+    BFW.Catalogo.load = function(){
+
+        let pendientes = 2;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0) BFW.App.render();
+
+        }
+
+        BFW.API.getCatalogo(function(datos){
+
+            BFW.Catalogo.data = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getConfig(function(datos){
+
+            BFW.Catalogo.config = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    };
+
+    /* ==================================================
+       NAVEGACIÓN
+    ================================================== */
+
+    BFW.Catalogo.nuevo = function(){
+
+        BFW.Catalogo.editando = null;
+        BFW.Catalogo.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.editar = function(id){
+
+        BFW.Catalogo.editando = BFW.Catalogo.data.find(function(p){ return Number(p.id) === Number(id); }) || null;
+        BFW.Catalogo.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.volver = function(){
+
+        BFW.Catalogo.editando = null;
+        BFW.Catalogo.view = "lista";
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.buscar = function(texto){
+
+        BFW.Catalogo.filtro = (texto || "").toLowerCase();
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.filtrarTipo = function(tipo){
+
+        BFW.Catalogo.filtroTipo = tipo;
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.filtrarFamilia = function(familia){
+
+        BFW.Catalogo.filtroFamilia = familia;
+        BFW.App.render();
+
+    };
+
+    BFW.Catalogo.alternarInactivos = function(){
+
+        BFW.Catalogo.verInactivos = !BFW.Catalogo.verInactivos;
+        BFW.App.render();
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    BFW.Catalogo.guardar = function(){
+
+        const producto = {
+            referencia:    document.getElementById("prod-referencia").value.trim(),
+            nombre:        document.getElementById("prod-nombre").value.trim(),
+            marca:         document.getElementById("prod-marca").value.trim(),
+            refFabricante: document.getElementById("prod-refFabricante").value.trim(),
+            tipo:          document.getElementById("prod-tipo").value,
+            familia:       document.getElementById("prod-familia").value,
+            unidad:        document.getElementById("prod-unidad").value,
+            pvp:           document.getElementById("prod-pvp").value,
+            activo:        document.getElementById("prod-activo").value,
+            observaciones: document.getElementById("prod-observaciones").value.trim()
+        };
+
+        const campoCoste = document.getElementById("prod-coste");
+
+        if(campoCoste){
+            producto.coste = campoCoste.value;
+        }
+
+        if(!producto.nombre){
+
+            BFW.UI.error("El producto necesita un nombre.");
+            return;
+
+        }
+
+        function terminar(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                BFW.UI.error(resultado.error || "No se ha podido guardar el producto.");
+                return;
+
+            }
+
+            BFW.Catalogo.data = null;
+            BFW.Catalogo.view = "lista";
+            BFW.Catalogo.editando = null;
+            BFW.UI.success("Producto guardado.");
+            BFW.App.render();
+
+        }
+
+        if(BFW.Catalogo.editando){
+
+            producto.id = BFW.Catalogo.editando.id;
+            BFW.API.updateProducto(producto, terminar);
+
+        } else {
+
+            BFW.API.insertProducto(producto, terminar);
+
+        }
+
+    };
+
+    BFW.Catalogo.eliminar = function(id, nombre){
+
+        BFW.UI.confirmar(
+            '¿Eliminar "' + nombre + '" del catálogo?\n\nSi ya se ha usado en alguna visita, es mejor marcarlo como inactivo para no perder el histórico.',
+            function(){
+
+                BFW.API.deleteProducto(id, function(resultado){
+
+                    if(resultado && resultado.ok === false){
+
+                        BFW.UI.error(resultado.error || "No se ha podido eliminar.");
+                        return;
+
+                    }
+
+                    BFW.Catalogo.data = null;
+                    BFW.App.render();
+
+                });
+
+            }
+        );
+
+    };
+
+    /* ==================================================
+       RENDER
+    ================================================== */
+
+    BFW.Catalogo.render = function(){
+
+        if(BFW.Catalogo.data === null){
+
+            BFW.Catalogo.load();
+
+            return '<div class="admin-empty"><p>Cargando catálogo...</p></div>';
+
+        }
+
+        return BFW.Catalogo.view === "formulario"
+            ? BFW.Catalogo.renderFormulario()
+            : BFW.Catalogo.renderLista();
+
+    };
+
+    BFW.Catalogo.filtrados = function(){
+
+        return (BFW.Catalogo.data || []).filter(function(p){
+
+            if(!BFW.Catalogo.verInactivos && p.activo !== "SI") return false;
+
+            if(BFW.Catalogo.filtroTipo !== "TODOS" && p.tipo !== BFW.Catalogo.filtroTipo) return false;
+
+            if(BFW.Catalogo.filtroFamilia !== "TODAS" && p.familia !== BFW.Catalogo.filtroFamilia) return false;
+
+            if(BFW.Catalogo.filtro){
+
+                const texto = [p.referencia, p.nombre, p.marca, p.refFabricante, p.tipo, p.familia].join(" ").toLowerCase();
+
+                if(texto.indexOf(BFW.Catalogo.filtro) === -1) return false;
+
+            }
+
+            return true;
+
+        }).sort(function(a,b){
+
+            return (a.nombre || "").localeCompare(b.nombre || "", "es");
+
+        });
+
+    };
+
+    BFW.Catalogo.renderLista = function(){
+
+        const productos = BFW.Catalogo.filtrados();
+        const esAdmin = BFW.Auth.esAdmin();
+
+        const chipsTipo = ["TODOS"].concat(BFW.Catalogo.TIPOS).map(function(t){
+
+            const activo = BFW.Catalogo.filtroTipo === t;
+
+            return `<button class="catalogo-chip ${activo ? "activo" : ""}" onclick="BFW.Catalogo.filtrarTipo('${t}')">${t === "TODOS" ? "Todos" : t}</button>`;
+
+        }).join("");
+
+        const filas = productos.map(function(p){
+
+            return `
+
+            <div class="catalogo-fila ${p.activo !== "SI" ? "catalogo-fila-inactiva" : ""}">
+
+                <div class="catalogo-fila-datos">
+
+                    <div class="catalogo-fila-nombre">
+                        ${BFW.Catalogo.escapar(p.nombre)}
+                        ${p.activo !== "SI" ? '<span class="catalogo-badge-inactivo">Inactivo</span>' : ""}
+                    </div>
+
+                    <div class="catalogo-fila-meta">
+                        ${p.referencia ? BFW.Catalogo.escapar(p.referencia) + " · " : ""}
+                        ${p.marca ? BFW.Catalogo.escapar(p.marca) + " · " : ""}
+                        ${p.familia ? BFW.Catalogo.escapar(p.familia) + " · " : ""}
+                        ${BFW.Catalogo.escapar(p.tipo)} · ${BFW.Catalogo.escapar(p.unidad)}
+                    </div>
+
+                </div>
+
+                <div class="catalogo-fila-precios">
+
+                    ${esAdmin && p.coste !== undefined
+                        ? `<div class="catalogo-coste">Coste ${BFW.Catalogo.euros(p.coste)}</div>`
+                        : ""}
+
+                    <div class="catalogo-pvp">${BFW.Catalogo.euros(p.pvp)}</div>
+
+                </div>
+
+                ${esAdmin ? `
+
+                <div class="catalogo-fila-acciones">
+                    <button class="babex-btn-secondary" onclick="BFW.Catalogo.editar(${p.id})">Editar</button>
+                    <button class="babex-btn-icon" title="Eliminar" onclick="BFW.Catalogo.eliminar(${p.id}, '${BFW.Catalogo.escapar(p.nombre)}')">🗑️</button>
+                </div>
+
+                ` : ""}
+
+            </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <div class="admin-panel">
+
+            <div class="admin-header-panel">
+
+                <div class="admin-header">
+
+                    <div>
+                        <div class="babex-overline">Sistema</div>
+                        <h2>Catálogo</h2>
+                    </div>
+
+                    ${esAdmin ? `<button class="babex-btn-primary" onclick="BFW.Catalogo.nuevo()">+ Nuevo producto</button>` : ""}
+
+                </div>
+
+                <p class="admin-nota admin-intro">
+                    Productos y servicios que se pueden instalar o facturar. Todos los precios van <strong>sin IVA</strong>.
+                    ${esAdmin ? "El coste es interno: no aparece en los presupuestos del cliente." : ""}
+                </p>
+
+            </div>
+
+            <div class="catalogo-barra">
+
+                <input id="catalogo-buscar" class="babex-input" type="text"
+                    placeholder="Buscar por nombre, referencia o marca..."
+                    value="${BFW.Catalogo.escapar(BFW.Catalogo.filtro)}"
+                    oninput="BFW.Catalogo.buscar(this.value)">
+
+            </div>
+
+            <div class="catalogo-chips">
+
+                <select class="babex-input catalogo-select-familia" onchange="BFW.Catalogo.filtrarFamilia(this.value)">
+                    <option value="TODAS">Todas las familias</option>
+                    ${BFW.Catalogo.familiasDisponibles().map(function(f){
+                        return `<option ${BFW.Catalogo.filtroFamilia === f ? "selected" : ""}>${f}</option>`;
+                    }).join("")}
+                </select>
+
+                ${chipsTipo}
+
+                <button class="catalogo-chip ${BFW.Catalogo.verInactivos ? "activo" : ""}"
+                    onclick="BFW.Catalogo.alternarInactivos()">
+                    ${BFW.Catalogo.verInactivos ? "Ocultar inactivos" : "Ver inactivos"}
+                </button>
+
+            </div>
+
+            <p class="admin-nota">${productos.length} producto${productos.length === 1 ? "" : "s"}.</p>
+
+            <div class="catalogo-lista">
+                ${filas || '<div class="admin-empty"><p>No hay productos que coincidan.</p></div>'}
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Catalogo.renderFormulario = function(){
+
+        const p = BFW.Catalogo.editando || {};
+        const esAdmin = BFW.Auth.esAdmin();
+
+        const opcionesTipo = BFW.Catalogo.TIPOS.map(function(t){
+            return `<option ${p.tipo === t ? "selected" : ""}>${t}</option>`;
+        }).join("");
+
+        const opcionesUnidad = BFW.Catalogo.UNIDADES.map(function(u){
+            return `<option ${p.unidad === u ? "selected" : ""}>${u}</option>`;
+        }).join("");
+
+        return `
+
+        <div class="admin-panel">
+
+            <div class="admin-header-panel">
+
+                <div class="admin-header">
+
+                    <div>
+                        <div class="babex-overline">Catálogo</div>
+                        <h2>${p.id ? "Editar producto" : "Nuevo producto"}</h2>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="babex-card admin-tipo-card">
+
+                <div class="catalogo-form-grid">
+
+                    <div>
+                        <label>Nombre *</label>
+                        <input id="prod-nombre" class="babex-input" value="${BFW.Catalogo.escapar(p.nombre || "")}"
+                            placeholder="Ej. Cámara Reolink RLC-810A">
+                    </div>
+
+                    <div>
+                        <label>Referencia interna</label>
+                        <input id="prod-referencia" class="babex-input" value="${BFW.Catalogo.escapar(p.referencia || "")}"
+                            placeholder="Ej. CAM-001">
+                    </div>
+
+                    <div>
+                        <label>Marca</label>
+                        <input id="prod-marca" class="babex-input" value="${BFW.Catalogo.escapar(p.marca || "")}"
+                            placeholder="Ej. Reolink">
+                    </div>
+
+                    <div>
+                        <label>Referencia del fabricante</label>
+                        <input id="prod-refFabricante" class="babex-input" value="${BFW.Catalogo.escapar(p.refFabricante || "")}"
+                            placeholder="Ej. RLC-810A">
+                    </div>
+
+                    <div>
+                        <label>Tipo</label>
+                        <select id="prod-tipo" class="babex-input">${opcionesTipo}</select>
+                    </div>
+
+                    <div>
+                        <label>Familia</label>
+                        <select id="prod-familia" class="babex-input">
+                            <option value="">Sin clasificar</option>
+                            ${BFW.Catalogo.familiasDisponibles().map(function(f){
+                                return `<option ${p.familia === f ? "selected" : ""}>${f}</option>`;
+                            }).join("")}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label>Unidad</label>
+                        <select id="prod-unidad" class="babex-input">${opcionesUnidad}</select>
+                    </div>
+
+                    ${esAdmin ? `
+                    <div>
+                        <label>Coste (sin IVA) · interno</label>
+                        <input id="prod-coste" class="babex-input" type="number" step="0.01" min="0"
+                            value="${p.coste !== undefined ? p.coste : ""}" placeholder="0,00">
+                    </div>
+                    ` : ""}
+
+                    <div>
+                        <label>PVP (sin IVA) *</label>
+                        <input id="prod-pvp" class="babex-input" type="number" step="0.01" min="0"
+                            value="${p.pvp !== undefined ? p.pvp : ""}" placeholder="0,00">
+                    </div>
+
+                    <div>
+                        <label>Estado</label>
+                        <select id="prod-activo" class="babex-input">
+                            <option value="SI" ${p.activo !== "NO" ? "selected" : ""}>Activo</option>
+                            <option value="NO" ${p.activo === "NO" ? "selected" : ""}>Inactivo</option>
+                        </select>
+                    </div>
+
+                </div>
+
+                <div style="margin-top:16px;">
+                    <label>Observaciones</label>
+                    <textarea id="prod-observaciones" class="babex-input" style="min-height:90px;">${BFW.Catalogo.escapar(p.observaciones || "")}</textarea>
+                </div>
+
+                <div class="catalogo-form-botones">
+                    <button class="babex-btn-secondary" onclick="BFW.Catalogo.volver()">Cancelar</button>
+                    <button class="babex-btn-primary" onclick="BFW.Catalogo.guardar()">Guardar</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+</script>

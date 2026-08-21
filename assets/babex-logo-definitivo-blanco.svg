@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 136" width="440" height="136"
+     role="img" aria-label="Babex · Smart Home Solutions">
+
+  <!--
+    BABEX · Logotipo definitivo para fondos oscuros
+
+    La casa pasa a blanco y el arco se aclara para mantener el
+    contraste sobre el azul marino de la app.
+  -->
+
+  <g id="isotipo" transform="translate(6, 12)">
+
+    <path d="M2 76 Q52 116 102 76"
+          fill="none" stroke="#5C9DFF" stroke-width="8.5"
+          stroke-linecap="round"/>
+
+    <path d="M14 74 L14 46 L52 12 L90 46 L90 74 Z"
+          fill="none" stroke="#ffffff" stroke-width="8"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g fill="#ffffff">
+      <rect x="42" y="48" width="8.5" height="8.5" rx="1.4"/>
+      <rect x="54" y="48" width="8.5" height="8.5" rx="1.4"/>
+      <rect x="42" y="60" width="8.5" height="8.5" rx="1.4"/>
+      <rect x="54" y="60" width="8.5" height="8.5" rx="1.4"/>
+    </g>
+
+  </g>
+
+  <text x="130" y="78"
+        font-family="Poppins, Montserrat, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
+        font-size="60" font-weight="600" fill="#ffffff">Babex</text>
+
+  <text x="134" y="104"
+        font-family="Poppins, Montserrat, 'Segoe UI', Inter, Helvetica, Arial, sans-serif"
+        font-size="17" font-weight="500" letter-spacing="1.1" fill="#5C9DFF">Smart Home Solutions</text>
+
+</svg>

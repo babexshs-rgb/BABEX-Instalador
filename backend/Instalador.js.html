@@ -1,0 +1,2299 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Instalador.js
+    Versión : 0.1.0
+    ==================================================
+    Vista de campo para los usuarios con rol "Instalador".
+
+    No es el panel de oficina reducido: es otra herramienta. Pensada
+    para usarse de pie, con una mano y con guantes si hace falta:
+    tarjetas grandes, una decisión por pantalla y las acciones
+    principales abajo, en la zona del pulgar.
+
+    v1 — solo lectura: ver las visitas asignadas, llamar al cliente y
+    abrir la dirección en el navegador GPS.
+    ==================================================
+    */
+
+    BFW.Instalador = {
+
+        visitas: null,
+        current: null,     // cita abierta
+        view: "lista",     // "lista" | "detalle" | "parte"
+        error: null,
+
+        // Datos de la visita abierta en el parte (estancias, líneas y
+        // catálogo). Se piden de golpe al entrar.
+        datos: null,
+
+        // Paso del asistente: 1 confirmar · 2 estancias · 3 productos
+        // · 4 fotos · 5 cierre
+        paso: 1,
+
+        // Estancia seleccionada en el paso de productos.
+        estanciaActual: null,
+
+        // Buscador de producto (paso 3): texto escrito y producto ya
+        // elegido, a la espera de cantidad.
+        busquedaProducto: "",
+        productoElegido: null,
+
+        // Fotos subidas en esta visita (para poder contarlas).
+        fotosSubidas: 0,
+
+        subiendoFoto: false,
+
+        // Progreso del lote de fotos que se está subiendo ahora mismo
+        // (cámara sube 1, galería puede subir varias de golpe).
+        _fotosPendientes: 0,
+        _fotosSubidasLote: 0
+
+    };
+
+    BFW.Instalador.PASOS = ["Visita", "Estancias", "Productos", "Fotos", "Cierre"];
+
+    /* --------------------------------------------------
+       Listas de partida
+
+       Se pueden cambiar desde Administración (claves INMUEBLE_TIPOS,
+       INMUEBLE_SUBTIPOS y ESTANCIAS_TIPOS) sin tocar código.
+    -------------------------------------------------- */
+
+    BFW.Instalador.TIPOS_INMUEBLE = ["Vivienda", "Local", "Nave", "Oficina", "Otro"];
+
+    BFW.Instalador.SUBTIPOS_VIVIENDA = [
+        "Piso", "Chalet", "Adosado", "Unifamiliar", "Ático", "Dúplex", "Bajo", "Estudio", "Otro"
+    ];
+
+    BFW.Instalador.TIPOS_ESTANCIA = [
+        "Salón", "Cocina", "Dormitorio", "Baño", "Aseo", "Pasillo", "Recibidor",
+        "Despacho", "Garaje", "Trastero", "Terraza", "Jardín", "Piscina",
+        "Cuadro eléctrico", "Exterior", "Otra"
+    ];
+
+    /* --------------------------------------------------
+       PREGUNTAS SEGÚN EL TIPO DE INMUEBLE
+
+       Solo se pregunta lo que aplica: en un piso no tiene sentido
+       preguntar por el jardín, y en una nave tampoco por el ascensor.
+       Cada respuesta se guarda al tocarla, sin botón de guardar: en el
+       móvil, un paso menos es un error menos.
+
+       tipo de pregunta:
+         "si_no"     → dos botones grandes
+         "contador"  → − y + , para números pequeños
+         "opciones"  → varios botones en fila
+    -------------------------------------------------- */
+
+    BFW.Instalador.PREGUNTAS = {
+
+        // Comunes a cualquier vivienda
+        "Vivienda": [
+            { id: "personas",   etiqueta: "Personas que viven",  tipo: "contador", min: 1, max: 12, porDefecto: 2 },
+            { id: "internet",   etiqueta: "Conexión a internet", tipo: "opciones", opciones: ["Fibra", "ADSL", "Móvil", "Sin internet"] },
+            { id: "cuadro",     etiqueta: "Cuadro eléctrico accesible", tipo: "si_no" }
+        ],
+
+        "Vivienda|Piso": [
+            { id: "planta",     etiqueta: "En qué planta está",  tipo: "contador", min: 0, max: 20, porDefecto: 1 },
+            { id: "ascensor",   etiqueta: "Ascensor",            tipo: "si_no" },
+            { id: "terraza",    etiqueta: "Terraza o balcón",    tipo: "si_no" },
+            { id: "trastero",   etiqueta: "Trastero",            tipo: "si_no" },
+            { id: "garaje",     etiqueta: "Plaza de garaje",     tipo: "si_no" }
+        ],
+
+        "Vivienda|Chalet": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 1, max: 5, porDefecto: 2 },
+            { id: "garaje",     etiqueta: "Garaje",              tipo: "si_no" },
+            { id: "jardin",     etiqueta: "Jardín",              tipo: "si_no" },
+            { id: "piscina",    etiqueta: "Piscina",             tipo: "si_no" },
+            { id: "trastero",   etiqueta: "Trastero o sótano",   tipo: "si_no" },
+            { id: "porton",     etiqueta: "Portón o cancela",    tipo: "si_no" }
+        ],
+
+        "Vivienda|Adosado": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 1, max: 4, porDefecto: 2 },
+            { id: "garaje",     etiqueta: "Garaje",              tipo: "si_no" },
+            { id: "jardin",     etiqueta: "Jardín o patio",      tipo: "si_no" },
+            { id: "trastero",   etiqueta: "Trastero",            tipo: "si_no" }
+        ],
+
+        "Vivienda|Unifamiliar": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 1, max: 5, porDefecto: 2 },
+            { id: "garaje",     etiqueta: "Garaje",              tipo: "si_no" },
+            { id: "jardin",     etiqueta: "Jardín",              tipo: "si_no" },
+            { id: "piscina",    etiqueta: "Piscina",             tipo: "si_no" },
+            { id: "porton",     etiqueta: "Portón o cancela",    tipo: "si_no" }
+        ],
+
+        "Vivienda|Ático": [
+            { id: "planta",     etiqueta: "En qué planta está",  tipo: "contador", min: 1, max: 20, porDefecto: 5 },
+            { id: "ascensor",   etiqueta: "Ascensor",            tipo: "si_no" },
+            { id: "terraza",    etiqueta: "Terraza",             tipo: "si_no" },
+            { id: "trastero",   etiqueta: "Trastero",            tipo: "si_no" }
+        ],
+
+        "Vivienda|Dúplex": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 2, max: 3, porDefecto: 2 },
+            { id: "ascensor",   etiqueta: "Ascensor",            tipo: "si_no" },
+            { id: "terraza",    etiqueta: "Terraza",             tipo: "si_no" },
+            { id: "garaje",     etiqueta: "Plaza de garaje",     tipo: "si_no" }
+        ],
+
+        "Vivienda|Bajo": [
+            { id: "jardin",     etiqueta: "Jardín o patio",      tipo: "si_no" },
+            { id: "trastero",   etiqueta: "Trastero",            tipo: "si_no" },
+            { id: "garaje",     etiqueta: "Plaza de garaje",     tipo: "si_no" }
+        ],
+
+        "Vivienda|Estudio": [
+            { id: "planta",     etiqueta: "En qué planta está",  tipo: "contador", min: 0, max: 20, porDefecto: 1 },
+            { id: "ascensor",   etiqueta: "Ascensor",            tipo: "si_no" }
+        ],
+
+        "Local": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 1, max: 4, porDefecto: 1 },
+            { id: "escaparate", etiqueta: "Escaparate a la calle", tipo: "si_no" },
+            { id: "almacen",    etiqueta: "Almacén o trastienda", tipo: "si_no" },
+            { id: "aseo",       etiqueta: "Aseo",                tipo: "si_no" },
+            { id: "alarma",     etiqueta: "Alarma ya instalada", tipo: "si_no" },
+            { id: "internet",   etiqueta: "Conexión a internet", tipo: "opciones", opciones: ["Fibra", "ADSL", "Móvil", "Sin internet"] }
+        ],
+
+        "Nave": [
+            { id: "altura",     etiqueta: "Altura aproximada (m)", tipo: "contador", min: 3, max: 15, porDefecto: 6 },
+            { id: "oficinas",   etiqueta: "Oficinas dentro",     tipo: "si_no" },
+            { id: "muelle",     etiqueta: "Muelle de carga",     tipo: "si_no" },
+            { id: "porton",     etiqueta: "Portón automático",   tipo: "si_no" },
+            { id: "internet",   etiqueta: "Conexión a internet", tipo: "opciones", opciones: ["Fibra", "ADSL", "Móvil", "Sin internet"] }
+        ],
+
+        "Oficina": [
+            { id: "planta",     etiqueta: "En qué planta está",  tipo: "contador", min: 0, max: 30, porDefecto: 1 },
+            { id: "ascensor",   etiqueta: "Ascensor",            tipo: "si_no" },
+            { id: "puestos",    etiqueta: "Puestos de trabajo",  tipo: "contador", min: 1, max: 50, porDefecto: 5 },
+            { id: "sala",       etiqueta: "Sala de reuniones",   tipo: "si_no" },
+            { id: "internet",   etiqueta: "Conexión a internet", tipo: "opciones", opciones: ["Fibra", "ADSL", "Móvil", "Sin internet"] }
+        ],
+
+        "Otro": [
+            { id: "plantas",    etiqueta: "Número de plantas",   tipo: "contador", min: 1, max: 10, porDefecto: 1 },
+            { id: "internet",   etiqueta: "Conexión a internet", tipo: "opciones", opciones: ["Fibra", "ADSL", "Móvil", "Sin internet"] }
+        ]
+
+    };
+
+    /**
+     * Preguntas que tocan para un tipo y subtipo concretos: primero las
+     * comunes al tipo y luego las propias del subtipo.
+     */
+    BFW.Instalador.preguntasDe = function(tipo, subtipo){
+
+        if(!tipo) return [];
+
+        const comunes = BFW.Instalador.PREGUNTAS[tipo] || [];
+        const propias = subtipo ? (BFW.Instalador.PREGUNTAS[tipo + "|" + subtipo] || []) : [];
+
+        return comunes.concat(propias);
+
+    };
+
+    /**
+     * Una visita se considera cerrada cuando ya se le dio una salida
+     * en el parte. Al volver a entrar no se "empieza" nada: se revisa
+     * y se corrige lo que ya se registró.
+     */
+    BFW.Instalador.visitaCerrada = function(v){
+
+        if(!v) return false;
+
+        return ["Realizada", "Cancelada"].indexOf(v.estado) !== -1;
+
+    };
+
+    /* --------------------------------------------------
+       Conservar la posición de la pantalla
+
+       Cada guardado repinta la vista entera, y sin esto el listado
+       salta arriba del todo en cuanto tocas un botón. Contestando diez
+       preguntas seguidas es insoportable.
+
+       Se guarda dónde estabas y se restaura tras el repintado.
+    -------------------------------------------------- */
+
+    BFW.Instalador._scrollPendiente = null;
+
+    BFW.Instalador.repintarSinSaltar = function(){
+
+        const cont = document.querySelector(".inst-contenido");
+
+        BFW.Instalador._scrollPendiente = cont ? cont.scrollTop : 0;
+
+        BFW.App.render();
+
+    };
+
+    BFW.Instalador._restaurarScroll = function(){
+
+        if(BFW.Instalador._scrollPendiente === null) return;
+
+        const posicion = BFW.Instalador._scrollPendiente;
+
+        requestAnimationFrame(function(){
+
+            const cont = document.querySelector(".inst-contenido");
+
+            if(cont) cont.scrollTop = posicion;
+
+            BFW.Instalador._scrollPendiente = null;
+
+        });
+
+    };
+
+    BFW.Instalador.escapar = function(texto){
+
+        return String(texto == null ? "" : texto)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+    };
+
+    /* ==================================================
+       API
+    ================================================== */
+
+    BFW.API.getMisVisitas = function(callback){
+
+        google.script.run
+
+            .withSuccessHandler(function(datos){
+
+                callback(datos);
+
+            })
+
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                callback(null);
+
+            })
+
+            .apiGetMisVisitas(BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("getMisVisitas");
+
+    /* --------------------------------------------------
+       API del parte de visita
+    -------------------------------------------------- */
+
+    BFW.API.getDatosVisita = function(citaId, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se han podido cargar los datos de la visita." }); })
+            .apiGetDatosVisita(citaId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.insertEstanciaCampo = function(estancia, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar la estancia." }); })
+            .apiInsertEstancia(estancia, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.insertLinea = function(linea, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar el producto." }); })
+            .apiInsertLineaEstancia(linea, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.updateLinea = function(linea, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido actualizar." }); })
+            .apiUpdateLineaEstancia(linea, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.deleteLinea = function(id, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido eliminar." }); })
+            .apiDeleteLineaEstancia(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.API.cerrarVisita = function(citaId, estado, observaciones, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido cerrar la visita." }); })
+            .apiCerrarVisita(citaId, estado, observaciones, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    ["getDatosVisita","insertEstanciaCampo","insertLinea","updateLinea","deleteLinea","cerrarVisita"]
+        .forEach(function(n){ BFW.UI.engancharCarga(n); });
+
+    BFW.Instalador.cargar = function(callback){
+
+        BFW.API.getMisVisitas(function(datos){
+
+            if(datos === null){
+
+                BFW.Instalador.error = "No se han podido cargar tus visitas. Comprueba la conexión.";
+                BFW.Instalador.visitas = [];
+
+            } else {
+
+                BFW.Instalador.error = null;
+                BFW.Instalador.visitas = Array.isArray(datos) ? datos : [];
+
+            }
+
+            if(callback) callback();
+
+        });
+
+    };
+
+    BFW.Instalador.recargar = function(){
+
+        BFW.Instalador.visitas = null;
+        BFW.App.render();
+
+    };
+
+    /* ==================================================
+       FECHAS
+    ================================================== */
+
+    BFW.Instalador.hoyISO = function(){
+
+        const hoy = new Date();
+        const mes = String(hoy.getMonth()+1).padStart(2,"0");
+        const dia = String(hoy.getDate()).padStart(2,"0");
+
+        return hoy.getFullYear()+"-"+mes+"-"+dia;
+
+    };
+
+    BFW.Instalador.fechaBonita = function(iso){
+
+        if(!iso) return "";
+
+        const hoy = BFW.Instalador.hoyISO();
+
+        if(iso === hoy) return "Hoy";
+
+        const manana = new Date();
+        manana.setDate(manana.getDate() + 1);
+
+        const mesM = String(manana.getMonth()+1).padStart(2,"0");
+        const diaM = String(manana.getDate()).padStart(2,"0");
+
+        if(iso === manana.getFullYear()+"-"+mesM+"-"+diaM) return "Mañana";
+
+        const partes = iso.split("-");
+
+        return partes[2] + "/" + partes[1];
+
+    };
+
+    /* ==================================================
+       NAVEGACIÓN
+    ================================================== */
+
+    BFW.Instalador.abrir = function(id){
+
+        BFW.Instalador.current = (BFW.Instalador.visitas || []).find(function(v){
+            return Number(v.id) === Number(id);
+        }) || null;
+
+        BFW.Instalador.view = "detalle";
+        BFW.App.render();
+
+    };
+
+    BFW.Instalador.volver = function(){
+
+        BFW.Instalador.current = null;
+        BFW.Instalador.view = "lista";
+        BFW.App.render();
+
+    };
+
+    /**
+     * Abre la dirección en el navegador del móvil. Si hay coordenadas
+     * se usan (mucho más fiable que la dirección escrita, sobre todo
+     * en zonas rurales o urbanizaciones); si no, se busca por texto.
+     *
+     * Se intenta primero el esquema geo:, que en Android deja elegir
+     * la app de navegación instalada. Como no todos los dispositivos
+     * lo resuelven, se cae a la URL de Google Maps.
+     */
+    BFW.Instalador.navegar = function(id){
+
+        const v = (BFW.Instalador.visitas || []).find(function(x){ return Number(x.id) === Number(id); });
+
+        if(!v) return;
+
+        let url;
+
+        if(v.latitud && v.longitud){
+
+            url = "https://www.google.com/maps/dir/?api=1&destination=" +
+                  encodeURIComponent(v.latitud + "," + v.longitud);
+
+        } else if(v.direccion){
+
+            url = "https://www.google.com/maps/dir/?api=1&destination=" +
+                  encodeURIComponent(v.direccion);
+
+        } else {
+
+            BFW.UI.error("Esta visita no tiene dirección registrada.");
+            return;
+
+        }
+
+        window.open(url, "_blank");
+
+    };
+
+    BFW.Instalador.llamar = function(id){
+
+        const v = (BFW.Instalador.visitas || []).find(function(x){ return Number(x.id) === Number(id); });
+
+        if(!v || !v.clienteTelefono){
+
+            BFW.UI.error("Este cliente no tiene teléfono registrado.");
+            return;
+
+        }
+
+        window.open("tel:" + String(v.clienteTelefono).replace(/\s+/g, ""), "_self");
+
+    };
+
+    /* ==================================================
+       PARTE DE VISITA (asistente por pasos)
+    ================================================== */
+
+    BFW.Instalador.abrirParte = function(){
+
+        if(!BFW.Instalador.current) return;
+
+        BFW.Instalador.datos = null;
+        BFW.Instalador.paso = 1;
+        BFW.Instalador.estanciaActual = null;
+        BFW.Instalador.fotosSubidas = 0;
+        BFW.Instalador.view = "parte";
+        BFW.App.render();
+
+    };
+
+    BFW.Instalador.cargarDatosParte = function(){
+
+        BFW.API.getDatosVisita(BFW.Instalador.current.id, function(r){
+
+            if(!r || r.ok === false){
+
+                BFW.Instalador.error = (r && r.error) || "No se han podido cargar los datos.";
+                BFW.Instalador.datos = { estancias: [], lineas: [], catalogo: [] };
+
+            } else {
+
+                BFW.Instalador.error = null;
+                BFW.Instalador.datos = r;
+
+            }
+
+            BFW.App.render();
+
+        });
+
+    };
+
+    BFW.Instalador.siguientePaso = function(){
+
+        if(BFW.Instalador.paso < 5){
+
+            BFW.Instalador.paso++;
+            BFW.App.render();
+
+            // Cada paso empieza arriba: si no, se hereda el scroll del
+            // paso anterior y parece que no ha pasado nada.
+            const cont = document.querySelector(".inst-contenido");
+            if(cont) cont.scrollTop = 0;
+
+        }
+
+    };
+
+    BFW.Instalador.pasoAnterior = function(){
+
+        if(BFW.Instalador.paso > 1){
+
+            BFW.Instalador.paso--;
+            BFW.App.render();
+
+        } else {
+
+            BFW.Instalador.view = "detalle";
+            BFW.App.render();
+
+        }
+
+    };
+
+    BFW.Instalador.irAPaso = function(n){
+
+        BFW.Instalador.paso = n;
+        BFW.App.render();
+
+    };
+
+    /* --------------------------------------------------
+       Estancias
+    -------------------------------------------------- */
+
+    BFW.Instalador.nuevaEstancia = function(){
+
+        const inmuebleId = BFW.Instalador.current ? BFW.Instalador.current.inmuebleId : null;
+
+        if(!inmuebleId){
+
+            BFW.UI.error("Esta visita no tiene un inmueble vinculado. Avisa a la oficina para que lo asocie.");
+            return;
+
+        }
+
+        BFW.UI.pedir({
+
+            titulo: "Nueva estancia",
+            texto: "Elige el tipo y, si hace falta, concreta cuál es.",
+            aceptar: "Añadir",
+
+            campos: [
+                {
+                    id: "tipo",
+                    etiqueta: "Tipo de estancia",
+                    tipo: "select",
+                    opciones: BFW.Instalador.TIPOS_ESTANCIA
+                },
+                {
+                    id: "detalle",
+                    etiqueta: "¿Cuál? (opcional)",
+                    tipo: "text",
+                    placeholder: "Ej. principal, infantil, de invitados, planta baja..."
+                }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            const tipo = valores.tipo;
+            const detalle = (valores.detalle || "").trim();
+
+            // Si eligen "Otra" hay que escribir cuál, porque si no la
+            // estancia se llamaría literalmente "Otra".
+            if(tipo === "Otra" && !detalle){
+
+                mostrarError("Has elegido \"Otra\": escribe de qué estancia se trata.");
+                return;
+
+            }
+
+            // "Dormitorio" + "principal" → "Dormitorio principal"
+            const nombre = tipo === "Otra"
+                ? detalle
+                : (detalle ? tipo + " " + detalle : tipo);
+
+            BFW.API.insertEstanciaCampo({
+                inmuebleId: inmuebleId,
+                nombre: nombre,
+                tipo: tipo === "Otra" ? "Otra" : tipo
+            }, function(r){
+
+                if(r && r.ok === false){
+
+                    mostrarError(r.error || "No se ha podido guardar.");
+                    return;
+
+                }
+
+                cerrar();
+
+                BFW.Instalador.datos = null;
+                BFW.Instalador.repintarSinSaltar();
+
+            });
+
+        });
+
+    };
+
+    /* --------------------------------------------------
+       Tipo de inmueble
+    -------------------------------------------------- */
+
+    BFW.API.fijarTipoInmueble = function(inmuebleId, tipo, subtipo, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar." }); })
+            .apiFijarTipoInmueble(inmuebleId, tipo, subtipo, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("fijarTipoInmueble");
+
+    /**
+     * Pregunta qué tipo de inmueble es. El subtipo solo se pide para
+     * viviendas: en un local o una nave no aporta nada.
+     */
+    BFW.Instalador.fijarTipoInmueble = function(){
+
+        const cita = BFW.Instalador.current;
+
+        if(!cita || !cita.inmuebleId){
+
+            BFW.UI.error("Esta visita no tiene inmueble vinculado.");
+            return;
+
+        }
+
+        BFW.UI.pedir({
+
+            titulo: "¿Qué tipo de inmueble es?",
+            aceptar: "Continuar",
+
+            campos: [
+                { id: "tipo", etiqueta: "Tipo", tipo: "select", opciones: BFW.Instalador.TIPOS_INMUEBLE }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            const tipo = valores.tipo;
+
+            cerrar();
+
+            if(tipo !== "Vivienda"){
+
+                BFW.Instalador._guardarTipoInmueble(tipo, "");
+                return;
+
+            }
+
+            BFW.UI.pedir({
+
+                titulo: "¿Qué tipo de vivienda?",
+                aceptar: "Guardar",
+
+                campos: [
+                    { id: "subtipo", etiqueta: "Subtipo", tipo: "select", opciones: BFW.Instalador.SUBTIPOS_VIVIENDA }
+                ]
+
+            }, function(v2, mostrarError2, cerrar2){
+
+                cerrar2();
+
+                BFW.Instalador._guardarTipoInmueble("Vivienda", v2.subtipo);
+
+            });
+
+        });
+
+    };
+
+    /* --------------------------------------------------
+       Características del inmueble
+    -------------------------------------------------- */
+
+    BFW.API.guardarCaracteristicas = function(inmuebleId, caracteristicas, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar." }); })
+            .apiGuardarCaracteristicasInmueble(inmuebleId, caracteristicas, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("guardarCaracteristicas");
+
+    BFW.Instalador.caracteristicas = function(){
+
+        const v = BFW.Instalador.current;
+
+        if(!v.inmuebleCaracteristicas) v.inmuebleCaracteristicas = {};
+
+        return v.inmuebleCaracteristicas;
+
+    };
+
+    /**
+     * Guarda una respuesta. Se escribe al momento, sin botón de
+     * guardar: en campo, cualquier paso extra es un paso que se olvida.
+     */
+    BFW.Instalador.responder = function(idPregunta, valor){
+
+        const v = BFW.Instalador.current;
+        const c = BFW.Instalador.caracteristicas();
+
+        c[idPregunta] = valor;
+
+        // Se repinta ya para que el botón quede marcado al instante,
+        // aunque el guardado tarde un poco, y sin perder la posición
+        // en la que estaba la pantalla.
+        BFW.Instalador.repintarSinSaltar();
+
+        BFW.API.guardarCaracteristicas(v.inmuebleId, c, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido guardar.");
+
+            }
+
+        });
+
+    };
+
+    BFW.Instalador.sumar = function(idPregunta, delta, min, max, porDefecto){
+
+        const c = BFW.Instalador.caracteristicas();
+        const actual = c[idPregunta] !== undefined ? Number(c[idPregunta]) : porDefecto;
+
+        let nuevo = actual + delta;
+
+        if(nuevo < min) nuevo = min;
+        if(nuevo > max) nuevo = max;
+
+        BFW.Instalador.responder(idPregunta, nuevo);
+
+    };
+
+    BFW.Instalador.renderPreguntas = function(){
+
+        const v = BFW.Instalador.current;
+
+        if(!v.inmuebleId || !v.inmuebleTipo) return "";
+
+        const preguntas = BFW.Instalador.preguntasDe(v.inmuebleTipo, v.inmuebleSubtipo);
+
+        if(!preguntas.length) return "";
+
+        const c = BFW.Instalador.caracteristicas();
+
+        const bloques = preguntas.map(function(p){
+
+            const valor = c[p.id];
+
+            if(p.tipo === "si_no"){
+
+                return `
+
+                <div class="inst-pregunta">
+
+                    <div class="inst-pregunta-etiqueta">${p.etiqueta}</div>
+
+                    <div class="inst-pregunta-botones">
+                        <button class="inst-opcion ${valor === true ? "activa" : ""}"
+                            onclick="BFW.Instalador.responder('${p.id}', true)">Sí</button>
+                        <button class="inst-opcion ${valor === false ? "activa" : ""}"
+                            onclick="BFW.Instalador.responder('${p.id}', false)">No</button>
+                    </div>
+
+                </div>
+
+                `;
+
+            }
+
+            if(p.tipo === "contador"){
+
+                const n = valor !== undefined ? valor : p.porDefecto;
+
+                return `
+
+                <div class="inst-pregunta">
+
+                    <div class="inst-pregunta-etiqueta">${p.etiqueta}</div>
+
+                    <div class="inst-contador">
+                        <button class="inst-opcion" onclick="BFW.Instalador.sumar('${p.id}', -1, ${p.min}, ${p.max}, ${p.porDefecto})">−</button>
+                        <span class="inst-contador-valor ${valor !== undefined ? "puesto" : ""}">${n}</span>
+                        <button class="inst-opcion" onclick="BFW.Instalador.sumar('${p.id}', 1, ${p.min}, ${p.max}, ${p.porDefecto})">+</button>
+                    </div>
+
+                </div>
+
+                `;
+
+            }
+
+            // opciones
+            return `
+
+            <div class="inst-pregunta">
+
+                <div class="inst-pregunta-etiqueta">${p.etiqueta}</div>
+
+                <div class="inst-pregunta-botones inst-pregunta-botones-multi">
+                    ${p.opciones.map(function(op){
+                        return `<button class="inst-opcion ${valor === op ? "activa" : ""}"
+                                    onclick="BFW.Instalador.responder('${p.id}', '${op}')">${op}</button>`;
+                    }).join("")}
+                </div>
+
+            </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <div class="inst-bloque">
+
+            <div class="inst-bloque-titulo">Sobre el inmueble</div>
+
+            <p class="inst-pregunta-ayuda">
+                Se guarda solo al tocar. Lo que no sepas, déjalo sin marcar.
+            </p>
+
+            ${bloques}
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Instalador._guardarTipoInmueble = function(tipo, subtipo){
+
+        BFW.API.fijarTipoInmueble(BFW.Instalador.current.inmuebleId, tipo, subtipo, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            // Se guarda en memoria para que se vea al momento sin
+            // tener que recargar toda la visita.
+            BFW.Instalador.current.inmuebleTipo = tipo;
+            BFW.Instalador.current.inmuebleSubtipo = subtipo;
+
+            BFW.UI.success("Tipo de inmueble guardado.");
+            BFW.Instalador.repintarSinSaltar();
+
+        });
+
+    };
+
+    /* --------------------------------------------------
+       Productos por estancia
+    -------------------------------------------------- */
+
+    BFW.Instalador.elegirEstancia = function(id){
+
+        BFW.Instalador.estanciaActual = id;
+
+        // Búsqueda de producto limpia al cambiar de estancia: si no, se
+        // arrastra la búsqueda de la anterior.
+        BFW.Instalador.productoElegido = null;
+        BFW.Instalador.busquedaProducto = "";
+
+        // Al cambiar de estancia sí interesa empezar arriba: es otra
+        // pantalla distinta, no una corrección sobre la misma.
+        BFW.App.render();
+
+        const cont = document.querySelector(".inst-contenido");
+        if(cont) cont.scrollTop = 0;
+
+    };
+
+    BFW.Instalador.lineasDe = function(estanciaId){
+
+        if(!BFW.Instalador.datos) return [];
+
+        return BFW.Instalador.datos.lineas.filter(function(l){
+            return Number(l.estanciaId) === Number(estanciaId);
+        });
+
+    };
+
+    /**
+     * Estado con el que se registran los productos, según el tipo de
+     * visita: en un levantamiento se proponen, en una instalación se
+     * dan por instalados.
+     */
+    BFW.Instalador.estadoSegunVisita = function(){
+
+        const tipo = ((BFW.Instalador.current && BFW.Instalador.current.tipo) || "").toLowerCase();
+
+        return tipo.indexOf("instalac") !== -1 ? "Instalado" : "Propuesto";
+
+    };
+
+    BFW.Instalador.anadirProducto = function(){
+
+        const estanciaId = BFW.Instalador.estanciaActual;
+
+        if(!estanciaId) return;
+
+        const producto = BFW.Instalador.productoElegido;
+        const cantidad = document.getElementById("inst-cantidad");
+
+        if(!producto){
+
+            BFW.UI.error("Elige un producto de la lista.");
+            return;
+
+        }
+
+        BFW.API.insertLinea({
+            estanciaId: estanciaId,
+            productoId: Number(producto.id),
+            cantidad: Number(cantidad ? cantidad.value : 1) || 1,
+            estado: BFW.Instalador.estadoSegunVisita(),
+            citaId: BFW.Instalador.current.id
+        }, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido añadir.");
+                return;
+
+            }
+
+            // Listo para el siguiente: se limpia la elección pero se
+            // sigue en la misma estancia, que es lo normal al colocar
+            // varios productos seguidos.
+            BFW.Instalador.productoElegido = null;
+            BFW.Instalador.busquedaProducto = "";
+
+            BFW.Instalador.datos = null;
+            BFW.Instalador.repintarSinSaltar();
+
+        });
+
+    };
+
+    BFW.Instalador.marcarInstalado = function(id){
+
+        BFW.API.updateLinea({ id: id, estado: "Instalado" }, function(r){
+
+            if(r && r.ok === false){
+
+                BFW.UI.error(r.error || "No se ha podido actualizar.");
+                return;
+
+            }
+
+            BFW.Instalador.datos = null;
+            BFW.Instalador.repintarSinSaltar();
+
+        });
+
+    };
+
+    BFW.Instalador.quitarLinea = function(id){
+
+        BFW.UI.confirmar("¿Quitar este producto de la estancia?", function(){
+
+            BFW.API.deleteLinea(id, function(r){
+
+                if(r && r.ok === false){
+
+                    BFW.UI.error(r.error || "No se ha podido quitar.");
+                    return;
+
+                }
+
+                BFW.Instalador.datos = null;
+                BFW.App.render();
+
+            });
+
+        });
+
+    };
+
+    /* --------------------------------------------------
+       Observaciones (estancia o línea de producto)
+    -------------------------------------------------- */
+
+    BFW.API.guardarObsEstancia = function(id, obs, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido guardar." }); })
+            .apiGuardarObservacionEstancia(id, obs, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("guardarObsEstancia");
+
+    /**
+     * El recuadro de observaciones no ocupa sitio hasta que se pide:
+     * se abre en un diálogo con lo ya escrito, si había algo.
+     */
+    BFW.Instalador.editarObservacion = function(tipo, id){
+
+        const datos = BFW.Instalador.datos;
+
+        let actual = "";
+        let titulo = "";
+
+        if(tipo === "estancia"){
+
+            const e = (datos.estancias || []).find(function(x){ return Number(x.id) === Number(id); });
+            actual = e ? (e.observaciones || "") : "";
+            titulo = "Observaciones de " + (e ? e.nombre : "la estancia");
+
+        } else {
+
+            const l = (datos.lineas || []).find(function(x){ return Number(x.id) === Number(id); });
+            actual = l ? (l.observaciones || "") : "";
+            titulo = "Observaciones de " + (l ? l.productoNombre : "el producto");
+
+        }
+
+        BFW.UI.pedir({
+
+            titulo: titulo,
+            aceptar: "Guardar",
+
+            campos: [
+                { id: "obs", etiqueta: "", tipo: "textarea", valor: actual,
+                  placeholder: "Ej. falta pasar cable, el cuadro está lleno, se instala el mes que viene..." }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            function terminar(r){
+
+                if(r && r.ok === false){
+
+                    mostrarError(r.error || "No se ha podido guardar.");
+                    return;
+
+                }
+
+                cerrar();
+
+                BFW.Instalador.datos = null;
+                BFW.Instalador.repintarSinSaltar();
+
+            }
+
+            if(tipo === "estancia"){
+
+                BFW.API.guardarObsEstancia(id, valores.obs, terminar);
+
+            } else {
+
+                BFW.API.updateLinea({ id: id, observaciones: valores.obs }, terminar);
+
+            }
+
+        });
+
+    };
+
+    /* --------------------------------------------------
+       Fotos
+    -------------------------------------------------- */
+
+    // Para qué es cada foto. Se guarda en el nombre del documento, así
+    // que después se distingue de un vistazo en Drive y en la ficha.
+    BFW.Instalador.TIPOS_FOTO = [
+        "General",
+        "Dónde instalar",
+        "Instalado",
+        "Estado / avería",
+        "Detalle"
+    ];
+
+    /**
+     * Contexto de la foto que se va a hacer: en qué estancia y, si
+     * aplica, sobre qué producto. Se rellena justo antes de disparar
+     * la cámara.
+     */
+    BFW.Instalador._contextoFoto = null;
+
+    /**
+     * Pide para qué es la foto y de dónde sale, y dispara el selector
+     * correspondiente. Se usa desde la estancia (sin producto) o desde
+     * una línea de producto.
+     */
+    BFW.Instalador.hacerFoto = function(estanciaId, lineaId){
+
+        BFW.UI.pedir({
+
+            titulo: "¿Qué vas a fotografiar?",
+            aceptar: "Continuar",
+
+            campos: [
+                { id: "tipo", etiqueta: "Tipo de foto", tipo: "select", opciones: BFW.Instalador.TIPOS_FOTO },
+                { id: "origen", etiqueta: "Origen", tipo: "select", opciones: ["Cámara", "Galería"] }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            cerrar();
+
+            BFW.Instalador._dispararSelector(estanciaId, lineaId, valores.tipo, valores.origen === "Galería" ? "galeria" : "camara");
+
+        });
+
+    };
+
+    /**
+     * Abre la cámara o el selector de archivos del móvil, según el
+     * origen. El input se crea al vuelo y se quita después, para no
+     * dejar controles sueltos ocupando pantalla.
+     *
+     * Cámara: `capture="environment"` fuerza a abrir la cámara trasera
+     * directamente en la mayoría de navegadores móviles.
+     *
+     * Galería: sin `capture`, el propio móvil ofrece elegir de sus
+     * fotos (y de paso también deja hacer una foto nueva, según el
+     * dispositivo). Se permite elegir varias de una vez.
+     */
+    BFW.Instalador._dispararSelector = function(estanciaId, lineaId, tipo, origen){
+
+        BFW.Instalador._contextoFoto = {
+            estanciaId: estanciaId || null,
+            lineaId: lineaId || null,
+            tipo: tipo
+        };
+
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.style.display = "none";
+
+        if(origen === "galeria"){
+
+            input.multiple = true;
+
+        } else {
+
+            input.capture = "environment";
+
+        }
+
+        input.onchange = function(){ BFW.Instalador.subirFotos(input); };
+
+        document.body.appendChild(input);
+        input.click();
+
+    };
+
+    /**
+     * Mantiene el nombre anterior por compatibilidad con quien lo
+     * llame directamente pidiendo la cámara sin pasar por el diálogo
+     * de tipo/origen (por ejemplo, código futuro más simple).
+     */
+    BFW.Instalador._dispararCamara = function(estanciaId, lineaId, tipo){
+
+        BFW.Instalador._dispararSelector(estanciaId, lineaId, tipo, "camara");
+
+    };
+
+    /**
+     * Sube una o varias fotos, reutilizando el módulo de Documentos:
+     * acaban en Drive, en la carpeta del cliente, vinculadas a la
+     * persona, el caso, el inmueble y —si aplica— la estancia. En el
+     * nombre se deja la estancia, el producto y para qué es la foto.
+     *
+     * Se suben de una en una, no en paralelo: Apps Script no admite
+     * bien varias llamadas simultáneas desde el mismo cliente, y así
+     * además se puede seguir el progreso con un contador.
+     */
+    BFW.Instalador.subirFotos = function(input){
+
+        const archivos = input.files ? Array.prototype.slice.call(input.files) : [];
+
+        if(input.parentNode) input.parentNode.removeChild(input);
+
+        if(!archivos.length) return;
+
+        BFW.Instalador.subiendoFoto = true;
+        BFW.Instalador._fotosPendientes = archivos.length;
+        BFW.Instalador._fotosSubidasLote = 0;
+        BFW.Instalador.repintarSinSaltar();
+
+        BFW.Instalador._subirFotoDeLote(archivos, 0);
+
+    };
+
+    BFW.Instalador._subirFotoDeLote = function(archivos, indice){
+
+        if(indice >= archivos.length){
+
+            BFW.Instalador.subiendoFoto = false;
+            BFW.Instalador.datos = null;   // para que aparezca en el listado
+
+            BFW.UI.success(
+                BFW.Instalador._fotosSubidasLote === 1
+                    ? "Foto guardada."
+                    : BFW.Instalador._fotosSubidasLote + " fotos guardadas."
+            );
+
+            BFW.Instalador.repintarSinSaltar();
+            return;
+
+        }
+
+        const archivo = archivos[indice];
+        const cita = BFW.Instalador.current;
+        const contexto = BFW.Instalador._contextoFoto || {};
+        const datos = BFW.Instalador.datos || {};
+
+        const lector = new FileReader();
+
+        lector.onload = function(e){
+
+            const base64 = String(e.target.result).split(",")[1];
+
+            const estancia = (datos.estancias || []).find(function(x){
+                return Number(x.id) === Number(contexto.estanciaId);
+            });
+
+            const linea = (datos.lineas || []).find(function(x){
+                return Number(x.id) === Number(contexto.lineaId);
+            });
+
+            // "Salón · Cámara Reolink · Dónde instalar"
+            const descripcion = [
+                estancia ? estancia.nombre : "",
+                linea ? linea.productoNombre : "",
+                contexto.tipo || ""
+            ].filter(Boolean).join(" · ");
+
+            BFW.API.insertDocumento({
+                personaId: cita.personaId || "",
+                casoId: cita.casoId || "",
+                inmuebleId: cita.inmuebleId || "",
+                estanciaId: contexto.estanciaId || "",
+                nombreOriginal: archivo.name,
+                mimeType: archivo.type,
+                base64: base64,
+                categoria: "Foto-" + (cita.tipo || "Visita"),
+                tipoDetectado: "Foto",
+                observacion: descripcion
+            }, function(r){
+
+                if(r && r.ok === false){
+
+                    BFW.UI.error((r.error || "No se ha podido subir una foto.") +
+                        (archivos.length > 1 ? " (" + (indice + 1) + "/" + archivos.length + ")" : ""));
+
+                } else {
+
+                    BFW.Instalador.fotosSubidas++;
+                    BFW.Instalador._fotosSubidasLote++;
+
+                }
+
+                BFW.Instalador._subirFotoDeLote(archivos, indice + 1);
+
+            });
+
+        };
+
+        lector.onerror = function(){
+
+            BFW.UI.error("No se ha podido leer una foto.");
+            BFW.Instalador._subirFotoDeLote(archivos, indice + 1);
+
+        };
+
+        lector.readAsDataURL(archivo);
+
+    };
+
+    /* --------------------------------------------------
+       Cierre
+    -------------------------------------------------- */
+
+    BFW.Instalador.cerrarVisita = function(estado){
+
+        const campo = document.getElementById("inst-observaciones");
+        const observaciones = campo ? campo.value.trim() : "";
+
+        BFW.UI.confirmar(
+
+            "¿Cerrar la visita como \"" + estado + "\"?",
+
+            function(){
+
+                BFW.API.cerrarVisita(BFW.Instalador.current.id, estado, observaciones, function(r){
+
+                    if(r && r.ok === false){
+
+                        BFW.UI.error(r.error || "No se ha podido cerrar.");
+                        return;
+
+                    }
+
+                    BFW.UI.success("Visita cerrada.");
+
+                    BFW.Instalador.visitas = null;
+                    BFW.Instalador.datos = null;
+                    BFW.Instalador.current = null;
+                    BFW.Instalador.view = "lista";
+                    BFW.App.render();
+
+                });
+
+            },
+
+            { aceptar: "Cerrar visita", peligroso: false }
+
+        );
+
+    };
+
+    /* ==================================================
+       RENDER
+    ================================================== */
+
+    BFW.Instalador.render = function(){
+
+        if(BFW.Instalador.visitas === null){
+
+            BFW.Instalador.cargar(function(){
+
+                BFW.App.render();
+
+            });
+
+            return BFW.Instalador.renderCargando();
+
+        }
+
+        // Si veníamos de guardar algo, se vuelve a donde estaba la
+        // pantalla en cuanto el navegador termine de pintar.
+        BFW.Instalador._restaurarScroll();
+
+        return `
+
+        <div class="inst-app">
+
+            ${BFW.Instalador.renderCabecera()}
+
+            <div class="inst-contenido">
+                ${BFW.Instalador.view === "parte"
+                    ? BFW.Instalador.renderParte()
+                    : (BFW.Instalador.view === "detalle" ? BFW.Instalador.renderDetalle() : BFW.Instalador.renderLista())}
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Instalador.renderCargando = function(){
+
+        return `
+
+        <div class="inst-cargando">
+
+            <div class="inst-logo">B</div>
+            <p>Cargando tus visitas...</p>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Instalador.renderCabecera = function(){
+
+        const nombre = (BFW.Auth.usuario && BFW.Auth.usuario.nombre) || "";
+
+        if(BFW.Instalador.view === "parte"){
+
+            return `
+
+            <header class="inst-cabecera">
+
+                <button class="inst-atras" onclick="BFW.Instalador.pasoAnterior()" aria-label="Atrás">‹</button>
+
+                <div class="inst-cabecera-titulo">
+                    ${BFW.Instalador.paso}/5 · ${BFW.Instalador.PASOS[BFW.Instalador.paso - 1]}
+                </div>
+
+                <button class="inst-icono" onclick="BFW.Instalador.volver()" aria-label="Salir del parte">✕</button>
+
+            </header>
+
+            `;
+
+        }
+
+        if(BFW.Instalador.view === "detalle"){
+
+            return `
+
+            <header class="inst-cabecera">
+
+                <button class="inst-atras" onclick="BFW.Instalador.volver()" aria-label="Volver">‹</button>
+
+                <div class="inst-cabecera-titulo">Visita</div>
+
+                <button class="inst-icono" onclick="BFW.Instalador.recargar()" aria-label="Actualizar">⟳</button>
+
+            </header>
+
+            `;
+
+        }
+
+        return `
+
+        <header class="inst-cabecera">
+
+            <div class="inst-cabecera-marca">
+                <strong>BABEX</strong>
+                <span>${BFW.Instalador.escapar(nombre)}</span>
+            </div>
+
+            <div class="inst-cabecera-acciones">
+                <button class="inst-icono" onclick="BFW.Instalador.recargar()" aria-label="Actualizar">⟳</button>
+                <button class="inst-icono" onclick="BFW.Auth.cerrarSesion()" aria-label="Salir">⏻</button>
+            </div>
+
+        </header>
+
+        `;
+
+    };
+
+    /* ==================================================
+       LISTA DE VISITAS
+    ================================================== */
+
+    BFW.Instalador.renderLista = function(){
+
+        if(BFW.Instalador.error){
+
+            return `
+
+            <div class="inst-vacio">
+                <p>${BFW.Instalador.escapar(BFW.Instalador.error)}</p>
+                <button class="inst-boton-principal" onclick="BFW.Instalador.recargar()">Reintentar</button>
+            </div>
+
+            `;
+
+        }
+
+        const hoy = BFW.Instalador.hoyISO();
+        const visitas = BFW.Instalador.visitas || [];
+
+        // Solo interesan las de hoy en adelante: lo pasado ya no se
+        // trabaja desde el móvil.
+        const pendientes = visitas.filter(function(v){ return v.fecha >= hoy; });
+
+        if(!pendientes.length){
+
+            return `
+
+            <div class="inst-vacio">
+                <div class="inst-vacio-icono">📋</div>
+                <h2>No tienes visitas</h2>
+                <p>Cuando te asignen una, aparecerá aquí.</p>
+                <button class="inst-boton-principal" onclick="BFW.Instalador.recargar()">Actualizar</button>
+            </div>
+
+            `;
+
+        }
+
+        const deHoy = pendientes.filter(function(v){ return v.fecha === hoy; });
+        const proximas = pendientes.filter(function(v){ return v.fecha > hoy; });
+
+        let html = "";
+
+        if(deHoy.length){
+
+            html += `<div class="inst-seccion">Hoy · ${deHoy.length} visita${deHoy.length === 1 ? "" : "s"}</div>`;
+            html += deHoy.map(BFW.Instalador.renderTarjeta).join("");
+
+        }
+
+        if(proximas.length){
+
+            html += `<div class="inst-seccion">Próximas</div>`;
+            html += proximas.map(BFW.Instalador.renderTarjeta).join("");
+
+        }
+
+        return html;
+
+    };
+
+    BFW.Instalador.renderTarjeta = function(v){
+
+        const esHoy = v.fecha === BFW.Instalador.hoyISO();
+
+        return `
+
+        <div class="inst-tarjeta ${esHoy ? "inst-tarjeta-hoy" : ""}" onclick="BFW.Instalador.abrir(${v.id})">
+
+            <div class="inst-tarjeta-hora">
+                <strong>${v.hora || "--:--"}</strong>
+                <span>${BFW.Instalador.fechaBonita(v.fecha)}</span>
+            </div>
+
+            <div class="inst-tarjeta-datos">
+
+                <div class="inst-tarjeta-cliente">${BFW.Instalador.escapar(v.clienteNombre || "Sin cliente")}</div>
+
+                <div class="inst-tarjeta-titulo">${BFW.Instalador.escapar(v.titulo || "")}</div>
+
+                ${v.direccion ? `<div class="inst-tarjeta-direccion">${BFW.Instalador.escapar(v.direccion)}</div>` : ""}
+
+                <div class="inst-tarjeta-pie">
+                    <span class="inst-chip">${BFW.Instalador.escapar(v.tipo || "Visita")}</span>
+                    <span class="inst-chip inst-chip-estado">${BFW.Instalador.escapar(v.estado || "")}</span>
+                </div>
+
+            </div>
+
+            <div class="inst-tarjeta-flecha">›</div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       DETALLE DE LA VISITA
+    ================================================== */
+
+    BFW.Instalador.renderDetalle = function(){
+
+        const v = BFW.Instalador.current;
+
+        if(!v){
+
+            return `<div class="inst-vacio"><p>Esta visita ya no está disponible.</p></div>`;
+
+        }
+
+        return `
+
+        <div class="inst-detalle">
+
+            <div class="inst-detalle-cabecera">
+
+                <div class="inst-detalle-cuando">
+                    ${BFW.Instalador.fechaBonita(v.fecha)} · ${v.hora || "--:--"}
+                </div>
+
+                <h1>${BFW.Instalador.escapar(v.titulo || "Visita")}</h1>
+
+                <div class="inst-detalle-chips">
+                    <span class="inst-chip">${BFW.Instalador.escapar(v.tipo || "Visita")}</span>
+                    <span class="inst-chip inst-chip-estado">${BFW.Instalador.escapar(v.estado || "")}</span>
+                </div>
+
+            </div>
+
+            <div class="inst-bloque">
+
+                <div class="inst-bloque-titulo">Cliente</div>
+                <div class="inst-bloque-valor">${BFW.Instalador.escapar(v.clienteNombre || "Sin cliente")}</div>
+
+                ${v.clienteTelefono
+                    ? `<div class="inst-bloque-secundario">${BFW.Instalador.escapar(v.clienteTelefono)}</div>`
+                    : `<div class="inst-bloque-secundario">Sin teléfono registrado</div>`}
+
+            </div>
+
+            <div class="inst-bloque">
+
+                <div class="inst-bloque-titulo">Dirección</div>
+                <div class="inst-bloque-valor">${BFW.Instalador.escapar(v.direccion || "Sin dirección registrada")}</div>
+
+                ${v.latitud && v.longitud
+                    ? `<div class="inst-bloque-secundario">Coordenadas guardadas</div>`
+                    : `<div class="inst-bloque-secundario">Sin coordenadas: se buscará por la dirección</div>`}
+
+            </div>
+
+            ${v.notas ? `
+
+            <div class="inst-bloque">
+                <div class="inst-bloque-titulo">Notas de oficina</div>
+                <div class="inst-bloque-nota">${BFW.Instalador.escapar(v.notas)}</div>
+            </div>
+
+            ` : ""}
+
+            <!-- Acciones abajo del todo: es donde llega el pulgar sin
+                 tener que recolocar el móvil en la mano. -->
+            <div class="inst-acciones">
+
+                <button class="inst-boton-secundario" onclick="BFW.Instalador.llamar(${v.id})">
+                    <span>📞</span> Llamar
+                </button>
+
+                <button class="inst-boton-principal" onclick="BFW.Instalador.navegar(${v.id})">
+                    <span>🧭</span> Ir
+                </button>
+
+            </div>
+
+            <button class="inst-boton-principal inst-boton-parte" onclick="BFW.Instalador.abrirParte()">
+                ${BFW.Instalador.visitaCerrada(v) ? "Revisar el parte" : "Empezar parte de visita"}
+            </button>
+
+            ${BFW.Instalador.visitaCerrada(v)
+                ? `<p class="inst-nota-cerrada">Esta visita ya se cerró como «${BFW.Instalador.escapar(v.estado)}». Puedes seguir añadiendo o corrigiendo lo que registraste.</p>`
+                : ""}
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       ASISTENTE DEL PARTE
+    ================================================== */
+
+    BFW.Instalador.renderParte = function(){
+
+        if(BFW.Instalador.datos === null){
+
+            BFW.Instalador.cargarDatosParte();
+
+            return `<div class="inst-vacio"><p>Cargando la visita...</p></div>`;
+
+        }
+
+        const pasos = {
+            1: BFW.Instalador.renderPasoConfirmar,
+            2: BFW.Instalador.renderPasoEstancias,
+            3: BFW.Instalador.renderPasoProductos,
+            4: BFW.Instalador.renderPasoFotos,
+            5: BFW.Instalador.renderPasoCierre
+        };
+
+        return `
+
+        <div class="inst-parte">
+
+            <div class="inst-progreso">
+                ${BFW.Instalador.PASOS.map(function(nombre, i){
+
+                    const n = i + 1;
+                    const clase = n === BFW.Instalador.paso ? "activo" : (n < BFW.Instalador.paso ? "hecho" : "");
+
+                    return `<div class="inst-progreso-punto ${clase}" onclick="BFW.Instalador.irAPaso(${n})" title="${nombre}"></div>`;
+
+                }).join("")}
+            </div>
+
+            ${pasos[BFW.Instalador.paso]()}
+
+            <!-- Cámara siempre a mano: mientras recorres la casa vas
+                 fotografiando lo que haga falta sin salir del paso en
+                 el que estés ni tener que volver atrás al terminar. -->
+            <button class="inst-camara-flotante ${BFW.Instalador.subiendoFoto ? "inst-deshabilitado" : ""}"
+                onclick="BFW.Instalador.hacerFotoRapida()"
+                aria-label="Hacer foto">
+                ${BFW.Instalador.subiendoFoto ? "⏳" : "📷"}
+            </button>
+
+        </div>
+
+        `;
+
+    };
+
+    /**
+     * Foto desde el botón flotante: si hay una estancia abierta, la
+     * asocia a ella; si no, pregunta a cuál pertenece antes de
+     * disparar la cámara.
+     */
+    BFW.Instalador.hacerFotoRapida = function(){
+
+        const estancias = (BFW.Instalador.datos && BFW.Instalador.datos.estancias) || [];
+
+        if(BFW.Instalador.estanciaActual){
+
+            BFW.Instalador.hacerFoto(BFW.Instalador.estanciaActual, null);
+            return;
+
+        }
+
+        if(!estancias.length){
+
+            BFW.Instalador.hacerFoto(null, null);
+            return;
+
+        }
+
+        BFW.UI.pedir({
+
+            titulo: "Foto",
+            aceptar: "Continuar",
+
+            campos: [
+                {
+                    id: "estancia",
+                    etiqueta: "¿De qué estancia?",
+                    tipo: "select",
+                    opciones: [{ valor: "", texto: "Sin estancia concreta" }].concat(
+                        estancias.map(function(e){ return { valor: e.id, texto: e.nombre }; })
+                    )
+                },
+                { id: "tipo", etiqueta: "Tipo de foto", tipo: "select", opciones: BFW.Instalador.TIPOS_FOTO },
+                { id: "origen", etiqueta: "Origen", tipo: "select", opciones: ["Cámara", "Galería"] }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            cerrar();
+
+            BFW.Instalador._dispararSelector(
+                valores.estancia || null, null, valores.tipo,
+                valores.origen === "Galería" ? "galeria" : "camara"
+            );
+
+        });
+
+    };
+
+    BFW.Instalador.botonSiguiente = function(texto){
+
+        return `
+
+        <div class="inst-acciones">
+            <button class="inst-boton-principal" onclick="BFW.Instalador.siguientePaso()">${texto || "Siguiente"}</button>
+        </div>
+
+        `;
+
+    };
+
+    /* --- Paso 1: confirmar ------------------------- */
+
+    BFW.Instalador.renderPasoConfirmar = function(){
+
+        const v = BFW.Instalador.current;
+        const cerrada = BFW.Instalador.visitaCerrada(v);
+
+        return `
+
+        <h2 class="inst-paso-titulo">${cerrada ? "Visita ya cerrada" : "¿Es esta la visita?"}</h2>
+
+        ${cerrada
+            ? `<p class="inst-paso-texto">Se cerró como «${BFW.Instalador.escapar(v.estado)}». Sigue adelante para añadir, quitar o corregir lo que registraste.</p>`
+            : ""}
+
+        <div class="inst-bloque">
+            <div class="inst-bloque-titulo">Cliente</div>
+            <div class="inst-bloque-valor">${BFW.Instalador.escapar(v.clienteNombre || "Sin cliente")}</div>
+        </div>
+
+        <div class="inst-bloque">
+            <div class="inst-bloque-titulo">Dirección</div>
+            <div class="inst-bloque-valor">${BFW.Instalador.escapar(v.direccion || "Sin dirección")}</div>
+        </div>
+
+        <div class="inst-bloque">
+            <div class="inst-bloque-titulo">Motivo</div>
+            <div class="inst-bloque-valor">${BFW.Instalador.escapar(v.titulo || "")}</div>
+            <div class="inst-bloque-secundario">${BFW.Instalador.escapar(v.tipo || "Visita")}</div>
+        </div>
+
+        ${v.inmuebleId ? `
+
+        <div class="inst-bloque">
+
+            <div class="inst-bloque-titulo">Tipo de inmueble</div>
+
+            <div class="inst-bloque-valor">
+                ${v.inmuebleTipo
+                    ? BFW.Instalador.escapar(v.inmuebleTipo) + (v.inmuebleSubtipo ? " · " + BFW.Instalador.escapar(v.inmuebleSubtipo) : "")
+                    : "Sin definir"}
+            </div>
+
+            <button class="inst-boton-secundario inst-boton-ancho" onclick="BFW.Instalador.fijarTipoInmueble()">
+                ${v.inmuebleTipo ? "Cambiar" : "Definir ahora"}
+            </button>
+
+        </div>
+
+        ${BFW.Instalador.renderPreguntas()}
+
+        ` : ""}
+
+        ${!v.inmuebleId ? `
+
+        <div class="inst-aviso">
+            Esta visita no tiene inmueble vinculado, así que no se pueden registrar estancias ni productos.
+            Puedes hacer fotos y cerrar la visita igualmente, pero avisa a la oficina.
+        </div>
+
+        ` : ""}
+
+        ${BFW.Instalador.botonSiguiente(cerrada ? "Continuar" : "Empezar")}
+
+        `;
+
+    };
+
+    /* --- Paso 2: estancias ------------------------- */
+
+    BFW.Instalador.renderPasoEstancias = function(){
+
+        const estancias = BFW.Instalador.datos.estancias || [];
+
+        const filas = estancias.map(function(e){
+
+            const cuantos = BFW.Instalador.lineasDe(e.id).length;
+
+            return `
+
+            <div class="inst-estancia inst-estancia-columna">
+
+                <div class="inst-estancia-fila">
+
+                    <div>
+                        <div class="inst-estancia-nombre">${BFW.Instalador.escapar(e.nombre)}</div>
+                        <div class="inst-estancia-meta">${cuantos} producto${cuantos === 1 ? "" : "s"}</div>
+                    </div>
+
+                    <div class="inst-linea-acciones">
+                        <button class="inst-mini-boton" onclick="BFW.Instalador.hacerFoto(${e.id}, null)">📷</button>
+                        <button class="inst-mini-boton" onclick="BFW.Instalador.editarObservacion('estancia', ${e.id})">✎</button>
+                    </div>
+
+                </div>
+
+                ${e.observaciones
+                    ? `<div class="inst-obs">${BFW.Instalador.escapar(e.observaciones)}</div>`
+                    : ""}
+
+            </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <h2 class="inst-paso-titulo">Estancias</h2>
+
+        <p class="inst-paso-texto">
+            Repasa las estancias de la vivienda. Si falta alguna, añádela: quedará guardada
+            para las visitas siguientes.
+        </p>
+
+        ${filas || `<div class="inst-aviso">Todavía no hay ninguna estancia registrada.</div>`}
+
+        <button class="inst-boton-secundario inst-boton-ancho" onclick="BFW.Instalador.nuevaEstancia()">
+            + Añadir estancia
+        </button>
+
+        ${BFW.Instalador.botonSiguiente()}
+
+        `;
+
+    };
+
+    /* --- Paso 3: productos ------------------------- */
+
+    BFW.Instalador.renderPasoProductos = function(){
+
+        const estancias = BFW.Instalador.datos.estancias || [];
+
+        if(!estancias.length){
+
+            return `
+
+            <h2 class="inst-paso-titulo">Productos</h2>
+
+            <div class="inst-aviso">Añade primero alguna estancia para poder colocar productos.</div>
+
+            ${BFW.Instalador.botonSiguiente()}
+
+            `;
+
+        }
+
+        // Sin estancia elegida: se muestra la lista para elegir una.
+        if(!BFW.Instalador.estanciaActual){
+
+            const tarjetas = estancias.map(function(e){
+
+                const lineas = BFW.Instalador.lineasDe(e.id);
+
+                return `
+
+                <div class="inst-estancia inst-estancia-pulsable" onclick="BFW.Instalador.elegirEstancia(${e.id})">
+                    <div>
+                        <div class="inst-estancia-nombre">${BFW.Instalador.escapar(e.nombre)}</div>
+                        <div class="inst-estancia-meta">${lineas.length} producto${lineas.length === 1 ? "" : "s"}</div>
+                    </div>
+                    <div class="inst-tarjeta-flecha">›</div>
+                </div>
+
+                `;
+
+            }).join("");
+
+            return `
+
+            <h2 class="inst-paso-titulo">¿En qué estancia estás?</h2>
+
+            ${tarjetas}
+
+            ${BFW.Instalador.botonSiguiente()}
+
+            `;
+
+        }
+
+        // Estancia elegida: sus productos y el formulario para añadir.
+        const estancia = estancias.find(function(e){ return Number(e.id) === Number(BFW.Instalador.estanciaActual); });
+        const lineas = BFW.Instalador.lineasDe(BFW.Instalador.estanciaActual);
+
+        const listaLineas = lineas.map(function(l){
+
+            return `
+
+            <div class="inst-linea inst-linea-columna">
+
+                <div class="inst-linea-fila">
+
+                    <div class="inst-linea-datos">
+                        <div class="inst-linea-nombre">${l.cantidad} × ${BFW.Instalador.escapar(l.productoNombre)}</div>
+                        <div class="inst-linea-estado inst-estado-${l.estado.toLowerCase()}">${l.estado}</div>
+                    </div>
+
+                    <div class="inst-linea-acciones">
+                        <button class="inst-mini-boton" onclick="BFW.Instalador.hacerFoto(${l.estanciaId}, ${l.id})">📷</button>
+                        <button class="inst-mini-boton" onclick="BFW.Instalador.editarObservacion('linea', ${l.id})">✎</button>
+                    </div>
+
+                </div>
+
+                ${l.observaciones
+                    ? `<div class="inst-obs">${BFW.Instalador.escapar(l.observaciones)}</div>`
+                    : ""}
+
+                <div class="inst-linea-fila inst-linea-fila-secundaria">
+
+                    ${l.estado === "Propuesto"
+                        ? `<button class="inst-mini-boton" onclick="BFW.Instalador.marcarInstalado(${l.id})">Marcar instalado</button>`
+                        : `<span class="inst-linea-meta">&nbsp;</span>`}
+
+                    <button class="inst-mini-boton inst-mini-borrar" onclick="BFW.Instalador.quitarLinea(${l.id})">Quitar</button>
+
+                </div>
+
+            </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <h2 class="inst-paso-titulo">${BFW.Instalador.escapar(estancia ? estancia.nombre : "")}</h2>
+
+        <button class="inst-enlace" onclick="BFW.Instalador.elegirEstancia(null)">‹ Cambiar de estancia</button>
+
+        ${listaLineas || `<div class="inst-aviso">Todavía no hay productos en esta estancia.</div>`}
+
+        <div class="inst-bloque">
+
+            <div class="inst-bloque-titulo">Añadir producto</div>
+
+            ${BFW.Instalador.renderBuscadorProducto()}
+
+            <div class="inst-bloque-secundario">
+                Se registrará como <strong>${BFW.Instalador.estadoSegunVisita()}</strong>, según el tipo de visita.
+            </div>
+
+        </div>
+
+        ${BFW.Instalador.botonSiguiente()}
+
+        `;
+
+    };
+
+    /* --------------------------------------------------
+       Buscador de producto (paso 3)
+
+       Son 261 referencias: un desplegable agrupado por familia obliga
+       a saber en qué familia está cada cosa. Con un buscador basta con
+       escribir "shelly persiana" y tocar el resultado.
+
+       Se deja también el desplegable agrupado como alternativa para
+       cuando no se sabe bien qué se busca y apetece más "hojear".
+    -------------------------------------------------- */
+
+    BFW.Instalador.buscarProducto = function(valor){
+
+        BFW.Instalador.busquedaProducto = valor;
+        BFW.Instalador.repintarSinSaltar();
+
+    };
+
+    BFW.Instalador.elegirProducto = function(id){
+
+        const catalogo = (BFW.Instalador.datos && BFW.Instalador.datos.catalogo) || [];
+        const producto = catalogo.find(function(p){ return Number(p.id) === Number(id); });
+
+        if(!producto) return;
+
+        BFW.Instalador.productoElegido = producto;
+        BFW.Instalador.busquedaProducto = "";
+        BFW.Instalador.repintarSinSaltar();
+
+    };
+
+    BFW.Instalador.quitarProductoElegido = function(){
+
+        BFW.Instalador.productoElegido = null;
+        BFW.Instalador.repintarSinSaltar();
+
+    };
+
+    BFW.Instalador.renderBuscadorProducto = function(){
+
+        const catalogo = (BFW.Instalador.datos && BFW.Instalador.datos.catalogo) || [];
+        const elegido = BFW.Instalador.productoElegido;
+
+        // Ya se ha elegido un producto: solo queda la cantidad.
+        if(elegido){
+
+            return `
+
+            <div class="inst-producto-elegido">
+
+                <div class="inst-producto-elegido-nombre">${BFW.Instalador.escapar(elegido.nombre)}</div>
+
+                <button class="inst-mini-boton" onclick="BFW.Instalador.quitarProductoElegido()">Cambiar</button>
+
+            </div>
+
+            <div class="inst-cantidad-fila">
+
+                <input id="inst-cantidad" class="babex-input" type="number" min="1" value="1" inputmode="numeric">
+
+                <button class="inst-boton-principal" onclick="BFW.Instalador.anadirProducto()">Añadir</button>
+
+            </div>
+
+            `;
+
+        }
+
+        const busqueda = (BFW.Instalador.busquedaProducto || "").trim().toLowerCase();
+
+        // Con texto escrito: lista de coincidencias, tocables.
+        if(busqueda.length >= 2){
+
+            const coincidencias = catalogo.filter(function(p){
+                return (p.nombre || "").toLowerCase().indexOf(busqueda) !== -1;
+            }).slice(0, 25);
+
+            const resultados = coincidencias.length
+                ? coincidencias.map(function(p){
+
+                    return `
+
+                    <div class="inst-resultado" onclick="BFW.Instalador.elegirProducto(${p.id})">
+                        <span>${BFW.Instalador.escapar(p.nombre)}</span>
+                        <span class="inst-resultado-familia">${BFW.Instalador.escapar(p.familia || "")}</span>
+                    </div>
+
+                    `;
+
+                }).join("")
+                : `<p class="inst-bloque-secundario">Sin resultados para «${BFW.Instalador.escapar(BFW.Instalador.busquedaProducto)}».</p>`;
+
+            return `
+
+            <input class="babex-input inst-buscador"
+                type="search"
+                inputmode="search"
+                placeholder="Buscar producto..."
+                value="${BFW.Instalador.escapar(BFW.Instalador.busquedaProducto)}"
+                oninput="BFW.Instalador.buscarProducto(this.value)"
+                autofocus>
+
+            <div class="inst-resultados">${resultados}</div>
+
+            `;
+
+        }
+
+        // Sin texto: buscador vacío + el desplegable agrupado, para
+        // quien prefiere hojear por familias.
+        const familias = {};
+
+        catalogo.forEach(function(p){
+
+            const f = p.familia || "Sin clasificar";
+
+            if(!familias[f]) familias[f] = [];
+
+            familias[f].push(p);
+
+        });
+
+        const opciones = Object.keys(familias).sort().map(function(f){
+
+            return `<optgroup label="${f}">` +
+                familias[f].map(function(p){
+                    return `<option value="${p.id}">${BFW.Instalador.escapar(p.nombre)}</option>`;
+                }).join("") +
+            `</optgroup>`;
+
+        }).join("");
+
+        return `
+
+        <input class="babex-input inst-buscador"
+            type="search"
+            inputmode="search"
+            placeholder="Buscar producto..."
+            value=""
+            oninput="BFW.Instalador.buscarProducto(this.value)">
+
+        <select id="inst-producto-select" class="babex-input inst-select" onchange="BFW.Instalador.elegirProducto(this.value)">
+            <option value="">...o elige por familia</option>
+            ${opciones}
+        </select>
+
+        `;
+
+    };
+
+    /* --- Paso 4: fotos ----------------------------- */
+
+    BFW.Instalador.renderPasoFotos = function(){
+
+        const fotos = BFW.Instalador.datos.fotos || [];
+
+        // La galería se repinta sin perder la posición cuando llegan
+        // las miniaturas: si no, al cargar te devolvería arriba.
+        const lista = fotos.length
+            ? BFW.UI.galeria(fotos, function(){ BFW.Instalador.repintarSinSaltar(); })
+            : "";
+
+        return `
+
+        <h2 class="inst-paso-titulo">Fotos de este inmueble</h2>
+
+        <p class="inst-paso-texto">
+            Las fotos se hacen desde cada estancia o producto, en el paso anterior,
+            para que quede claro a qué corresponde cada una. Aquí puedes revisarlas
+            y añadir alguna general.
+        </p>
+
+        ${lista || `<div class="inst-aviso">Todavía no hay fotos de este inmueble.</div>`}
+
+        <button class="inst-boton-secundario inst-boton-ancho ${BFW.Instalador.subiendoFoto ? "inst-deshabilitado" : ""}"
+            onclick="BFW.Instalador.hacerFoto(null, null)">
+            ${BFW.Instalador.subiendoFoto ? "Subiendo..." : "📷 Añadir foto"}
+        </button>
+
+        ${BFW.Instalador.botonSiguiente()}
+
+        `;
+
+    };
+
+    /* --- Paso 5: cierre ---------------------------- */
+
+    BFW.Instalador.renderPasoCierre = function(){
+
+        const lineas = BFW.Instalador.datos.lineas || [];
+        const estancias = BFW.Instalador.datos.estancias || [];
+        const fotos = BFW.Instalador.datos.fotos || [];
+
+        const cerrada = BFW.Instalador.visitaCerrada(BFW.Instalador.current);
+
+        return `
+
+        <h2 class="inst-paso-titulo">${cerrada ? "Actualizar el cierre" : "Cerrar la visita"}</h2>
+
+        ${cerrada
+            ? `<p class="inst-paso-texto">Ya está cerrada como «${BFW.Instalador.escapar(BFW.Instalador.current.estado)}». Si algo ha cambiado, vuelve a elegir cómo termina.</p>`
+            : ""}
+
+        <div class="inst-bloque">
+            <div class="inst-bloque-titulo">Resumen</div>
+            <div class="inst-bloque-valor">${estancias.length} estancia${estancias.length === 1 ? "" : "s"}</div>
+            <div class="inst-bloque-secundario">
+                ${lineas.length} línea${lineas.length === 1 ? "" : "s"} de producto ·
+                ${fotos.length} foto${fotos.length === 1 ? "" : "s"} en el inmueble
+                (${BFW.Instalador.fotosSubidas} hoy)
+            </div>
+        </div>
+
+        <div class="inst-bloque">
+            <div class="inst-bloque-titulo">Observaciones para la oficina</div>
+            <textarea id="inst-observaciones" class="babex-input inst-textarea"
+                placeholder="Qué ha pasado, qué queda pendiente, material que falta..."></textarea>
+        </div>
+
+        <div class="inst-cierre-botones">
+
+            <button class="inst-boton-principal inst-boton-ancho" onclick="BFW.Instalador.cerrarVisita('Realizada')">
+                ✓ Realizada
+            </button>
+
+            <button class="inst-boton-secundario inst-boton-ancho" onclick="BFW.Instalador.cerrarVisita('Pendiente')">
+                Queda pendiente
+            </button>
+
+            <button class="inst-boton-secundario inst-boton-ancho" onclick="BFW.Instalador.cerrarVisita('Cancelada')">
+                Cliente ausente
+            </button>
+
+        </div>
+
+        `;
+
+    };
+
+</script>

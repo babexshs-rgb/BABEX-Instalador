@@ -1,0 +1,451 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Buscador.js
+    Versión : 0.1.0
+    ==================================================
+    Buscador global: cruza Personas, Inmuebles, Casos, Empresas y
+    Documentos a la vez, en vez de tener que ir módulo por módulo.
+    Los datos se piden una sola vez y se guardan; el botón "Actualizar"
+    los vuelve a traer si han cambiado mientras tanto.
+    ==================================================
+    */
+
+    BFW.Buscador = {
+
+        termino: "",
+        datos: null,
+        cargando: false
+
+    };
+
+    BFW.Buscador.MINIMO_CARACTERES = 2;
+
+    BFW.Buscador.escapar = function(texto){
+
+        return String(texto == null ? "" : texto)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+    };
+
+    /* ==================================================
+       DATOS
+    ================================================== */
+
+    BFW.Buscador.cargar = function(callback){
+
+        if(BFW.Buscador.cargando) return;
+
+        BFW.Buscador.cargando = true;
+
+        const datos = {
+            personas: [],
+            inmuebles: [],
+            casos: [],
+            empresas: [],
+            documentos: []
+        };
+
+        let pendientes = 5;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0){
+
+                BFW.Buscador.datos = datos;
+                BFW.Buscador.cargando = false;
+
+                if(callback) callback();
+
+            }
+
+        }
+
+        BFW.API.getPersonas(function(d){ datos.personas = Array.isArray(d) ? d : []; comprobar(); });
+        BFW.API.getInmuebles(function(d){ datos.inmuebles = Array.isArray(d) ? d : []; comprobar(); });
+        BFW.API.getCasos(function(d){ datos.casos = Array.isArray(d) ? d : []; comprobar(); });
+        BFW.API.getEmpresas(function(d){ datos.empresas = Array.isArray(d) ? d : []; comprobar(); });
+        BFW.API.getDocumentos(function(d){ datos.documentos = Array.isArray(d) ? d : []; comprobar(); });
+
+    };
+
+    BFW.Buscador.actualizar = function(){
+
+        BFW.Buscador.datos = null;
+        BFW.App.render();
+
+    };
+
+    /* ==================================================
+       BÚSQUEDA
+    ================================================== */
+
+    /**
+     * Nombre completo de una persona a partir de su id, para poder
+     * mostrarlo en los resultados de casos y documentos.
+     */
+    BFW.Buscador.nombrePersona = function(id){
+
+        if(!id || !BFW.Buscador.datos) return "";
+
+        const p = BFW.Buscador.datos.personas.find(function(x){ return Number(x.id) === Number(id); });
+
+        return p ? (p.nombre + " " + (p.apellidos || "")).trim() : "";
+
+    };
+
+    /**
+     * Convierte cada registro en una ficha uniforme de resultado:
+     * { modulo, id, titulo, subtitulo, texto }
+     * "texto" es donde se busca; el resto es lo que se pinta.
+     */
+    BFW.Buscador.fichas = function(){
+
+        const d = BFW.Buscador.datos;
+        const fichas = [];
+
+        (d.personas || []).forEach(function(p){
+
+            const titulo = (p.nombre + " " + (p.apellidos || "")).trim();
+
+            fichas.push({
+                modulo: "personas",
+                id: p.id,
+                titulo: titulo,
+                subtitulo: [p.tipo, p.ciudad, p.telefono].filter(Boolean).join(" · "),
+                texto: [titulo, p.tipo, p.ciudad, p.telefono, p.email, p.direccion, p.observaciones].join(" ")
+            });
+
+        });
+
+        (d.inmuebles || []).forEach(function(i){
+
+            fichas.push({
+                modulo: "inmuebles",
+                id: i.id,
+                titulo: i.direccion || "Sin dirección",
+                subtitulo: [i.ciudad, i.tipo, BFW.Buscador.nombrePersona(i.personaId)].filter(Boolean).join(" · "),
+                texto: [i.direccion, i.ciudad, i.tipo, i.observaciones, BFW.Buscador.nombrePersona(i.personaId)].join(" ")
+            });
+
+        });
+
+        (d.casos || []).forEach(function(c){
+
+            const cliente = BFW.Buscador.nombrePersona(c.personaId);
+
+            fichas.push({
+                modulo: "casos",
+                id: c.id,
+                titulo: (c.tipo || "Caso") + (c.descripcion ? " — " + c.descripcion : ""),
+                subtitulo: [c.estado, cliente].filter(Boolean).join(" · "),
+                texto: [c.tipo, c.estado, c.descripcion, cliente].join(" ")
+            });
+
+        });
+
+        (d.empresas || []).forEach(function(e){
+
+            fichas.push({
+                modulo: "empresas",
+                id: e.id,
+                titulo: e.nombre || "Sin nombre",
+                subtitulo: [e.tipo, e.telefono, e.email].filter(Boolean).join(" · "),
+                texto: [e.nombre, e.cif, e.tipo, e.telefono, e.email, e.web].join(" ")
+            });
+
+        });
+
+        (d.documentos || []).forEach(function(doc){
+
+            const cliente = BFW.Buscador.nombrePersona(doc.personaId);
+
+            fichas.push({
+                modulo: "documentos",
+                id: doc.id,
+                titulo: doc.nombre || "Documento",
+                subtitulo: [doc.categoria, cliente, doc.fechaSubida].filter(Boolean).join(" · "),
+                texto: [doc.nombre, doc.categoria, doc.tipo, cliente].join(" ")
+            });
+
+        });
+
+        return fichas;
+
+    };
+
+    BFW.Buscador.buscar = function(texto){
+
+        BFW.Buscador.termino = texto || "";
+        BFW.App.render();
+
+    };
+
+    /**
+     * Vuelve a la lista de resultados desde la ficha que se abrió
+     * desde el buscador, conservando el término tecleado.
+     */
+    BFW.Buscador.volverAResultados = function(){
+
+        BFW.Router.current = "buscador";
+        BFW.App.render();
+
+    };
+
+    /**
+     * Entrada desde la caja de búsqueda de la cabecera: lleva a la
+     * pantalla del buscador con el término ya puesto.
+     */
+    BFW.Buscador.desdeCabecera = function(texto){
+
+        BFW.Buscador.termino = texto || "";
+        BFW.Router.current = "buscador";
+        BFW.App.render();
+
+        requestAnimationFrame(function(){
+
+            const campo = document.getElementById("buscador-global-input");
+
+            if(campo){
+
+                campo.focus();
+
+                // Cursor al final, para poder seguir escribiendo.
+                const fin = campo.value.length;
+                campo.setSelectionRange(fin, fin);
+
+            }
+
+        });
+
+    };
+
+    BFW.Buscador.resultados = function(){
+
+        const termino = BFW.Buscador.termino.trim().toLowerCase();
+
+        if(termino.length < BFW.Buscador.MINIMO_CARACTERES) return [];
+
+        // Se buscan todas las palabras, en cualquier orden: "juan bilbao"
+        // encuentra a Juan aunque Bilbao esté en otro campo.
+        const palabras = termino.split(/\s+/);
+
+        return BFW.Buscador.fichas().filter(function(f){
+
+            const texto = f.texto.toLowerCase();
+
+            return palabras.every(function(p){ return texto.indexOf(p) !== -1; });
+
+        });
+
+    };
+
+    /* ==================================================
+       NAVEGACIÓN
+    ================================================== */
+
+    BFW.Buscador.ETIQUETAS = {
+        personas:   { nombre: "Personas",   icono: "👤" },
+        inmuebles:  { nombre: "Inmuebles",  icono: "🏡" },
+        casos:      { nombre: "Casos",      icono: "📁" },
+        empresas:   { nombre: "Empresas",   icono: "🏢" },
+        documentos: { nombre: "Documentos", icono: "📄" }
+    };
+
+    BFW.Buscador.MODULOS = {
+        personas:   "Personas",
+        inmuebles:  "Inmuebles",
+        casos:      "Casos",
+        empresas:   "Empresas",
+        documentos: "Documentos"
+    };
+
+    /**
+     * Abre la ficha correspondiente en su módulo. Cada módulo tiene su
+     * propio seleccionar(), que ya se encarga de repintar la pantalla.
+     */
+    BFW.Buscador.abrir = function(modulo, id){
+
+        const nombreModulo = BFW.Buscador.MODULOS[modulo];
+
+        if(!nombreModulo || !BFW[nombreModulo]){
+
+            BFW.App.render();
+            return;
+
+        }
+
+        // Casos, Empresas y Documentos buscan la ficha dentro de sus
+        // propios datos (BFW.X.data). Si nunca has entrado en ese
+        // módulo, esos datos todavía no existen y seleccionar() falla.
+        // Como el buscador ya los tiene cargados, se los pasamos.
+        if(!Array.isArray(BFW[nombreModulo].data)){
+
+            BFW[nombreModulo].data = (BFW.Buscador.datos && BFW.Buscador.datos[modulo]) || [];
+
+        }
+
+        BFW.Router.current = modulo;
+
+        if(typeof BFW[nombreModulo].seleccionar === "function"){
+
+            BFW[nombreModulo].seleccionar(id);
+
+        } else {
+
+            BFW.App.render();
+
+        }
+
+    };
+
+    /* ==================================================
+       RENDER
+    ================================================== */
+
+    BFW.Buscador.render = function(){
+
+        if(BFW.Buscador.datos === null){
+
+            BFW.Buscador.cargar(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="admin-empty"><p>Cargando datos para la búsqueda...</p></div>';
+
+        }
+
+        const termino = BFW.Buscador.termino.trim();
+        const resultados = BFW.Buscador.resultados();
+
+        let cuerpo;
+
+        if(termino.length < BFW.Buscador.MINIMO_CARACTERES){
+
+            cuerpo = `
+
+                <div class="admin-empty">
+                    <p>Escribe al menos ${BFW.Buscador.MINIMO_CARACTERES} caracteres para buscar.</p>
+                    <p style="font-size:13px;color:var(--color-text-muted);">
+                        Busca en personas, inmuebles, casos, empresas y documentos a la vez.
+                    </p>
+                </div>
+
+            `;
+
+        } else if(resultados.length === 0){
+
+            cuerpo = `
+
+                <div class="admin-empty">
+                    <p>Sin resultados para "${BFW.Buscador.escapar(termino)}".</p>
+                </div>
+
+            `;
+
+        } else {
+
+            // Se agrupan por módulo, respetando el orden de ETIQUETAS.
+            cuerpo = Object.keys(BFW.Buscador.ETIQUETAS).map(function(modulo){
+
+                const delModulo = resultados.filter(function(r){ return r.modulo === modulo; });
+
+                if(!delModulo.length) return "";
+
+                const etiqueta = BFW.Buscador.ETIQUETAS[modulo];
+
+                const filas = delModulo.map(function(r){
+
+                    return `
+
+                        <div class="admin-usuario-row" style="cursor:pointer;"
+                            onclick="BFW.Buscador.abrir('${r.modulo}', ${r.id})">
+
+                            <div class="admin-usuario-avatar" style="background:transparent;font-size:18px;">
+                                ${etiqueta.icono}
+                            </div>
+
+                            <div class="admin-usuario-info">
+                                <div class="admin-usuario-nombre">${BFW.Buscador.escapar(r.titulo)}</div>
+                                <div class="admin-usuario-email">${BFW.Buscador.escapar(r.subtitulo)}</div>
+                            </div>
+
+                        </div>
+
+                    `;
+
+                }).join("");
+
+                return `
+
+                    <div class="babex-card admin-tipo-card">
+
+                        <div class="admin-tipo-header">
+                            <h3>${etiqueta.nombre} <span class="admin-solicitudes-badge">${delModulo.length}</span></h3>
+                        </div>
+
+                        <div class="admin-usuarios-lista">
+                            ${filas}
+                        </div>
+
+                    </div>
+
+                `;
+
+            }).join("");
+
+        }
+
+        return `
+
+        <div class="admin-panel">
+
+            <div class="admin-header-panel">
+
+                <div class="admin-header">
+
+                    <div>
+                        <div class="babex-overline">Búsqueda</div>
+                        <h2>Buscador global</h2>
+                    </div>
+
+                    <button class="babex-btn-secondary" onclick="BFW.Buscador.actualizar()">Actualizar datos</button>
+
+                </div>
+
+                <div style="margin-top:12px;">
+
+                    <input id="buscador-global-input" class="babex-input" type="text"
+                        placeholder="Buscar en todo BABEX..."
+                        value="${BFW.Buscador.escapar(BFW.Buscador.termino)}"
+                        oninput="BFW.Buscador.buscar(this.value)">
+
+                </div>
+
+                ${termino.length >= BFW.Buscador.MINIMO_CARACTERES
+                    ? `<p class="admin-nota">${resultados.length} resultado${resultados.length === 1 ? "" : "s"}.</p>`
+                    : ""}
+
+            </div>
+
+            <div class="admin-tipos">
+                ${cuerpo}
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+</script>

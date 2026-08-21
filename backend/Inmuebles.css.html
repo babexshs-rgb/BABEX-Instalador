@@ -1,0 +1,1141 @@
+<style>
+    /* ==================================================
+       INMUEBLES
+    ================================================== */
+/*==================================================
+INMUEBLES · CABECERA
+==================================================*/
+.inmuebles-header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:24px;
+}
+.inmuebles-header h2{
+margin:0;
+font-size:32px;
+font-weight:700;
+color:var(--color-text-primary);
+}
+.inmuebles-header p{
+margin-top:6px;
+color:var(--color-text-secondary);
+}
+/*==================================================
+BUSCADOR / TOOLBAR
+==================================================*/
+.inmuebles-panel{
+display:grid;
+grid-template-rows:auto 1fr;
+height:100%;
+min-height:0;
+}
+.inmuebles-header-panel{
+display:flex;
+flex-direction:column;
+gap:18px;
+}
+.inmuebles-toolbar{
+display:flex;
+align-items:center;
+gap:14px;
+}
+.inmuebles-search{
+position:relative;
+flex:1;
+}
+.inmuebles-search-icon{
+position:absolute;
+left:18px;
+top:50%;
+transform:translateY(-50%);
+color:var(--color-text-muted);
+font-size:15px;
+pointer-events:none;
+}
+.inmuebles-search .babex-input{
+height:48px;
+padding-left:46px;
+border-radius:14px;
+border:1px solid var(--color-border);
+background:var(--color-surface);
+transition:.20s;
+}
+.inmuebles-btn-add{
+min-width:125px;
+}
+.inmuebles-filtros{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:8px;
+margin-bottom:18px;
+}
+.inmuebles-resumen{
+display:flex;
+align-items:center;
+justify-content:center;
+gap:12px;
+padding:12px 16px;
+margin-bottom:18px;
+border-radius:12px;
+background:var(--color-bg);
+border:1px solid var(--color-border);
+font-size:13px;
+color:var(--color-text-secondary);
+}
+.inmuebles-resumen strong{
+color:var(--color-text-primary);
+font-size:15px;
+}
+.inmuebles-list{
+overflow-y:auto;
+min-height:0;
+padding-right:6px;
+}
+/*==================================================
+CHIPS FILTROS
+==================================================*/
+.inmueble-chip{
+border:1px solid transparent;
+border-radius:10px;
+padding:10px 0;
+font-size:13px;
+font-weight:600;
+cursor:pointer;
+transition:.20s;
+}
+.inmueble-chip:hover{
+background:var(--color-surface-hover);
+}
+.inmueble-chip.activo{
+transform:translateY(-1px);
+box-shadow:0 4px 10px rgba(0,0,0,.3);
+}
+.inmueble-chip-todos{
+background:var(--color-surface-hover);
+color:var(--color-text-secondary);
+border-color:var(--color-border);
+}
+.inmueble-chip-todos.activo{
+background:#475569;
+color:#ffffff;
+}
+.inmueble-chip-vivienda{
+background:rgba(61,107,255,.15);
+color:var(--color-primary-100);
+border-color:rgba(61,107,255,.35);
+}
+.inmueble-chip-vivienda.activo{
+background:var(--color-primary-500);
+color:#ffffff;
+}
+.inmueble-chip-local{
+background:rgba(234,88,12,.15);
+color:#fb923c;
+border-color:rgba(234,88,12,.35);
+}
+.inmueble-chip-local.activo{
+background:#ea580c;
+color:#ffffff;
+}
+.inmueble-chip-nave{
+background:rgba(124,58,237,.15);
+color:#c4b5fd;
+border-color:rgba(124,58,237,.35);
+}
+.inmueble-chip-nave.activo{
+background:#7c3aed;
+color:#ffffff;
+}
+/*==================================================
+AVATAR / TIPO
+==================================================*/
+.inmueble-list-avatar{
+width:52px;
+height:52px;
+border-radius:50%;
+display:flex;
+justify-content:center;
+align-items:center;
+flex-shrink:0;
+font-size:20px;
+color:white;
+margin-right:16px;
+transition:.20s;
+}
+.tipo-vivienda{
+background:#2563eb;
+}
+.tipo-local{
+background:#ea580c;
+}
+.tipo-nave{
+background:#7c3aed;
+}
+.tipo-comunidad{
+background:#16a34a;
+}
+.tipo-otro{
+background:#374151;
+}
+.badge-vivienda{
+background:rgba(61,107,255,.15);
+color:var(--color-primary-100);
+}
+.badge-local{
+background:rgba(234,88,12,.15);
+color:#fb923c;
+}
+.badge-nave{
+background:rgba(124,58,237,.15);
+color:#c4b5fd;
+}
+.badge-comunidad{
+background:rgba(34,197,94,.15);
+color:var(--color-success);
+}
+/*==================================================
+TARJETA LISTA
+==================================================*/
+.inmueble-list-card{
+display:flex;
+align-items:center;
+gap:14px;
+cursor:pointer;
+padding:12px 16px;
+border-radius:14px;
+border-left:4px solid transparent;
+transition:background .18s, border-color .18s;
+}
+.inmueble-list-card:hover{
+background:var(--color-surface-hover);
+}
+.inmueble-list-card-active{
+background:rgba(61,107,255,.12);
+border-left-color:var(--color-primary-500);
+}
+.inmueble-list-info{
+display:flex;
+flex-direction:column;
+justify-content:center;
+flex:1;
+min-width:0;
+}
+.inmueble-list-name{
+font-size:15px;
+font-weight:600;
+color:var(--color-text-primary);
+line-height:1.3;
+}
+.inmueble-list-sub{
+font-size:13px;
+color:var(--color-text-secondary);
+margin-top:2px;
+}
+/*==================================================
+FICHA INMUEBLE
+==================================================*/
+.inmueble-top{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:28px;
+padding-bottom:20px;
+border-bottom:1px solid var(--color-border);
+}
+.inmueble-identidad{
+display:flex;
+align-items:center;
+gap:20px;
+}
+.inmueble-avatar-lg{
+width:76px;
+height:76px;
+border-radius:50%;
+color:#fff;
+display:flex;
+justify-content:center;
+align-items:center;
+font-size:32px;
+}
+.inmueble-title{
+margin:0;
+font-size:30px;
+font-weight:700;
+color:var(--color-text-primary);
+}
+.inmueble-subtitle{
+margin-top:6px;
+color:var(--color-text-secondary);
+font-size:15px;
+display:flex;
+align-items:center;
+gap:10px;
+}
+.inmueble-form-grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:24px;
+margin-bottom:28px;
+}
+.inmueble-box{
+background:var(--color-bg);
+border:1px solid var(--color-border);
+border-radius:16px;
+padding:22px;
+}
+.inmueble-box h3{
+margin:0 0 18px;
+color:var(--color-text-primary);
+}
+.inmueble-detail-row{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:12px 0;
+border-bottom:1px solid var(--color-border);
+}
+.inmueble-detail-row:last-child{
+border-bottom:none;
+}
+.inmueble-observaciones{
+min-height:140px;
+line-height:1.7;
+white-space:pre-wrap;
+color:var(--color-text-primary);
+}
+.inmueble-detail{
+display:flex;
+flex-direction:column;
+height:100%;
+min-height:0;
+overflow-y:auto;
+overflow-x:hidden;
+padding-right:10px;
+}
+/*==================================================
+FORMULARIO
+==================================================*/
+.inmueble-form-wrapper{
+width:100%;
+max-width:1200px;
+margin:0 auto;
+padding-bottom:40px;
+}
+.inmueble-form-card{
+border:none;
+box-shadow:none;
+padding:0;
+}
+.inmueble-form-section{
+background:var(--color-bg);
+border:1px solid var(--color-border);
+border-radius:18px;
+padding:24px;
+margin-bottom:22px;
+}
+.inmueble-form-section h3{
+margin:0 0 22px;
+font-size:18px;
+color:var(--color-text-primary);
+}
+.inmueble-campo label{
+display:block;
+margin-bottom:8px;
+font-weight:600;
+color:var(--color-text-secondary);
+}
+.inmueble-observaciones-layout{
+display:grid;
+grid-template-columns:1fr;
+gap:32px;
+}
+.inmueble-observaciones-input{
+width:100%;
+height:170px;
+resize:none;
+font-family:inherit;
+}
+.inmueble-form-footer{
+margin-top:32px;
+padding-top:24px;
+border-top:1px solid var(--color-border);
+}
+.inmueble-form-buttons{
+display:flex;
+justify-content:flex-end;
+gap:12px;
+}
+/*==================================================
+EDITOR (página completa)
+==================================================*/
+.inmueble-editor-page{
+display:flex;
+flex-direction:column;
+height:calc(100vh - var(--app-header-height));
+min-height:0;
+padding:24px;
+}
+.inmueble-editor-header{
+display:flex;
+align-items:center;
+gap:18px;
+margin-bottom:24px;
+}
+.inmueble-editor-header h2{
+margin:0;
+font-size:30px;
+font-weight:700;
+color:var(--color-text-primary);
+}
+.inmueble-editor-header p{
+margin-top:6px;
+color:var(--color-text-secondary);
+}
+.inmueble-editor{
+flex:1;
+overflow-y:auto;
+min-height:0;
+padding-right:10px;
+}
+/*==================================================
+ESTADO VACÍO
+==================================================*/
+/*==================================================
+PRESUPUESTOS
+==================================================*/
+
+/* Varios presupuestos caben uno al lado de otro cuando hay sitio, y
+   se apilan cuando no lo hay. */
+.pres-rejilla{
+
+display:grid;
+grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));
+gap:12px;
+
+}
+
+.pres-tarjeta{
+
+min-width:0;
+padding:16px;
+border-radius:var(--radius-sm);
+background:var(--color-bg);
+border:1px solid var(--color-border);
+
+}
+
+.pres-cabecera{
+
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:10px;
+margin-bottom:10px;
+
+}
+
+.pres-numero{
+
+font-size:13px;
+font-weight:700;
+letter-spacing:.06em;
+color:var(--color-text-muted);
+font-variant-numeric:tabular-nums;
+
+}
+
+.pres-estado{
+
+padding:2px 9px;
+border-radius:var(--radius-full);
+font-size:11px;
+font-weight:700;
+
+}
+
+.pres-borrador{
+
+background:var(--color-surface-hover);
+color:var(--color-text-muted);
+
+}
+
+.pres-enviado{
+
+background:rgba(59,130,246,.15);
+color:var(--color-primary-500);
+
+}
+
+.pres-aceptado{
+
+background:rgba(34,197,94,.15);
+color:var(--color-success);
+
+}
+
+.pres-rechazado{
+
+background:rgba(239,68,68,.12);
+color:var(--color-danger);
+
+}
+
+/* Cancelada: mismo rojo que Rechazado pero algo más apagado, para que
+   a simple vista se lean como "la misma familia" (las dos son bajas)
+   sin llegar a confundirse con un rechazo antes de empezar. */
+.pres-cancelada{
+
+background:rgba(148,163,184,.18);
+color:#64748b;
+
+}
+
+/* Etapas de instalación posteriores a la aceptación: en una progresión
+   de intensidad, de "en marcha" (ámbar) a "cobrada" (verde fuerte). */
+
+.pres-ejecucion{
+
+background:rgba(249,115,22,.15);
+color:#f97316;
+
+}
+
+.pres-ejecutada{
+
+background:rgba(168,85,247,.15);
+color:#a855f7;
+
+}
+
+.pres-facturada{
+
+background:rgba(6,182,212,.15);
+color:#06b6d4;
+
+}
+
+.pres-cobrada{
+
+background:rgba(34,197,94,.18);
+color:var(--color-success);
+font-weight:800;
+
+}
+
+/* El total es lo primero que se busca: grande y separado del resto. */
+.pres-total{
+
+font-size:28px;
+font-weight:700;
+line-height:1.1;
+color:var(--color-text-primary);
+font-variant-numeric:tabular-nums;
+margin-bottom:10px;
+
+}
+
+/* Desglose en columnas: la etiqueta arriba en gris y la cifra debajo
+   en blanco. Así se distingue el texto del número de un vistazo. */
+.pres-desglose{
+
+display:flex;
+flex-wrap:wrap;
+gap:16px;
+padding-bottom:12px;
+margin-bottom:12px;
+border-bottom:1px solid var(--color-border);
+font-size:12px;
+color:var(--color-text-muted);
+
+}
+
+.pres-desglose b{
+
+display:block;
+margin-top:1px;
+font-size:13px;
+color:var(--color-text-secondary);
+font-variant-numeric:tabular-nums;
+
+}
+
+.pres-select{
+
+width:100%;
+height:38px;
+font-size:13px;
+margin-bottom:10px;
+
+}
+
+.pres-acciones{
+
+display:flex;
+gap:8px;
+
+}
+
+.pres-boton{
+
+flex:1;
+display:flex;
+align-items:center;
+justify-content:center;
+gap:6px;
+min-height:38px;
+padding:0 10px;
+border-radius:var(--radius-sm);
+border:1px solid var(--color-border);
+background:var(--color-surface);
+color:var(--color-text-secondary);
+font-size:12.5px;
+font-weight:600;
+font-family:var(--font-family);
+cursor:pointer;
+white-space:nowrap;
+transition:.14s;
+
+}
+
+.pres-boton:hover{
+
+border-color:var(--color-primary-500);
+color:var(--color-text-primary);
+
+}
+
+.pres-boton-borrar{
+
+flex:0 0 44px;
+font-size:15px;
+
+}
+
+.pres-boton-borrar:hover{
+
+border-color:var(--color-danger);
+
+}
+
+/*==================================================
+ESTRUCTURA DE LA FICHA
+
+Secciones apiladas a lo ancho en lugar de una rejilla de tarjetas:
+cada bloque ocupa el alto que necesita y el ojo baja en orden, en vez
+de saltar entre dos columnas de alturas descompensadas.
+==================================================*/
+
+.inmueble-bloque{
+
+margin-bottom:18px;
+padding:20px 22px;
+background:var(--color-surface);
+border:1px solid var(--color-border);
+border-radius:var(--radius-lg);
+
+}
+
+.inmueble-bloque > h3{
+
+margin:0 0 16px;
+font-size:15px;
+font-weight:700;
+color:var(--color-text-primary);
+
+}
+
+.inmueble-columnas{
+
+display:grid;
+grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+gap:18px;
+align-items:start;
+
+}
+
+.inmueble-columnas > *{
+
+min-width:0;
+margin-bottom:0;
+
+}
+
+/*--- Banda de datos ---*/
+
+.inmueble-banda{
+
+margin-bottom:18px;
+padding:18px 22px;
+background:var(--color-surface);
+border:1px solid var(--color-border);
+border-radius:var(--radius-lg);
+
+}
+
+.inm-datos{
+
+display:flex;
+flex-wrap:wrap;
+gap:10px 34px;
+
+}
+
+.inm-dato{
+
+display:flex;
+flex-direction:column;
+gap:3px;
+
+}
+
+.inm-dato span{
+
+font-size:11px;
+font-weight:700;
+text-transform:uppercase;
+letter-spacing:.08em;
+color:var(--color-text-muted);
+
+}
+
+.inm-dato strong{
+
+font-size:16px;
+font-weight:600;
+color:var(--color-text-primary);
+font-variant-numeric:tabular-nums;
+
+}
+
+.inm-dato-pulsable{
+
+cursor:pointer;
+
+}
+
+.inm-dato-pulsable strong{
+
+color:var(--color-primary-500);
+
+}
+
+.inm-dato-pulsable:hover strong{
+
+text-decoration:underline;
+
+}
+
+.inm-caracteristicas:not(:empty){
+
+margin-top:16px;
+padding-top:16px;
+border-top:1px solid var(--color-border);
+
+}
+
+/*==================================================
+CARACTERÍSTICAS
+Lo que registra el instalador en la primera visita: plantas,
+garaje, jardín, ascensor... según el tipo de inmueble.
+==================================================*/
+
+/* A lo ancho de la ficha: si va en una columna junto a Estancias, la
+   tarjeta se estira para igualar alturas y queda medio recuadro vacío. */
+.inmueble-box-ancho{
+
+grid-column:1 / -1;
+
+}
+
+/* Sin esto, un contenido más ancho que su columna no encoge: la
+   rejilla le da el tamaño mínimo del contenido y lo que sobra se
+   sale del recuadro y se corta. */
+.inmueble-form-grid > *{
+
+min-width:0;
+
+}
+
+.carac-linea{
+
+display:flex;
+flex-wrap:wrap;
+align-items:center;
+gap:8px;
+
+}
+
+.carac-tipo{
+
+padding:5px 12px;
+border-radius:var(--radius-full);
+background:rgba(59,130,246,.12);
+border:1px solid var(--color-primary-500);
+font-size:13px;
+font-weight:700;
+color:var(--color-primary-500);
+margin-right:4px;
+
+}
+
+.carac-chip{
+
+padding:5px 11px;
+border-radius:var(--radius-full);
+border:1px solid var(--color-border);
+background:var(--color-bg);
+font-size:12px;
+color:var(--color-text-secondary);
+white-space:nowrap;
+
+}
+
+.carac-chip-si{
+
+border-color:var(--color-success);
+color:var(--color-success);
+
+}
+
+.carac-chip-no{
+
+opacity:.55;
+
+}
+
+.carac-chip-dato strong{
+
+color:var(--color-text-primary);
+
+}
+
+/*==================================================
+INVENTARIO POR ESTANCIAS
+Es el centro del equipamiento de una casa: qué hay en cada
+habitación y en qué estado. Se edita aquí, no desde la cita.
+==================================================*/
+
+/* Al ocupar el ancho completo, las estancias se reparten en columnas:
+   una casa con ocho habitaciones sería una lista larguísima si fueran
+   todas una debajo de otra. */
+.inv-rejilla{
+
+display:grid;
+grid-template-columns:repeat(auto-fill, minmax(330px, 1fr));
+gap:14px;
+align-items:start;
+
+}
+
+.inv-estancia{
+
+min-width:0;
+padding:14px;
+border-radius:var(--radius-sm);
+background:var(--color-bg);
+border:1px solid var(--color-border);
+
+}
+
+.inv-estancia-cabecera{
+
+display:flex;
+align-items:flex-start;
+justify-content:space-between;
+gap:12px;
+margin-bottom:10px;
+
+}
+
+.inv-estancia-nombre{
+
+font-size:15px;
+font-weight:700;
+color:var(--color-text-primary);
+
+}
+
+.inv-estancia-meta{
+
+margin-top:2px;
+font-size:12px;
+color:var(--color-text-muted);
+
+}
+
+.inv-linea{
+
+display:flex;
+align-items:flex-start;
+justify-content:space-between;
+gap:10px;
+padding:8px 10px;
+margin-bottom:6px;
+border-radius:var(--radius-sm);
+background:var(--color-surface);
+border:1px solid var(--color-border);
+
+}
+
+.inv-linea-datos{
+
+flex:1;
+min-width:0;
+
+}
+
+.inv-linea-nombre{
+
+font-size:14px;
+color:var(--color-text-primary);
+
+}
+
+.inv-linea-acciones{
+
+display:flex;
+gap:4px;
+flex-shrink:0;
+
+}
+
+.inv-estado{
+
+display:inline-block;
+margin-left:8px;
+padding:1px 8px;
+border-radius:var(--radius-full);
+font-size:11px;
+font-weight:700;
+
+}
+
+.inv-estado-propuesto{
+
+background:rgba(59,130,246,.15);
+color:var(--color-primary-500);
+
+}
+
+.inv-estado-instalado{
+
+background:rgba(34,197,94,.15);
+color:var(--color-success);
+
+}
+
+.inv-estado-retirado{
+
+background:var(--color-surface-hover);
+color:var(--color-text-muted);
+
+}
+
+.inv-obs{
+
+margin-top:6px;
+padding:7px 10px;
+border-left:3px solid var(--color-primary-500);
+background:var(--color-surface);
+border-radius:var(--radius-sm);
+font-size:13px;
+line-height:1.45;
+color:var(--color-text-secondary);
+white-space:pre-wrap;
+
+}
+
+.inv-vacio{
+
+margin:0 0 8px;
+font-size:13px;
+color:var(--color-text-muted);
+
+}
+
+/* Fotos dentro de una estancia: la galería reutiliza el componente
+   general (BFW.UI.galeria), aquí solo se reduce el tamaño de miniatura
+   porque conviven con la lista de productos en la misma tarjeta. */
+.inv-fotos{
+
+margin:10px 0;
+
+}
+
+.inv-fotos .galeria{
+
+grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));
+
+}
+
+.inv-fotos .galeria-foto img,
+.inv-fotos .galeria-hueco{
+
+height:74px;
+
+}
+
+.inv-sin-estancia{
+
+border-style:dashed;
+
+}
+
+.inv-fotos-asignar-lista{
+
+display:flex;
+flex-wrap:wrap;
+gap:12px;
+margin-top:8px;
+
+}
+
+.inv-foto-asignar{
+
+width:120px;
+display:flex;
+flex-direction:column;
+gap:6px;
+
+}
+
+.inv-foto-asignar .galeria-foto img,
+.inv-foto-asignar .galeria-hueco{
+
+height:90px;
+
+}
+
+.inv-foto-asignar-select{
+
+height:36px;
+font-size:12px;
+
+}
+
+.inv-anadir{
+
+display:flex;
+gap:8px;
+margin-top:10px;
+
+}
+
+.inv-anadir select{
+
+flex:1;
+min-width:0;
+
+}
+
+.inv-cantidad{
+
+width:80px;
+flex-shrink:0;
+text-align:center;
+
+}
+
+/*==================================================
+ESTANCIAS
+==================================================*/
+
+.inmueble-estancia{
+
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+padding:10px 12px;
+margin-bottom:8px;
+border-radius:var(--radius-sm);
+background:var(--color-bg);
+border:1px solid var(--color-border);
+
+}
+
+.inmueble-estancia-nombre{
+
+font-size:14px;
+font-weight:700;
+color:var(--color-text-primary);
+
+}
+
+.inmueble-estancia-obs{
+
+margin-top:2px;
+font-size:12px;
+color:var(--color-text-muted);
+
+}
+
+.inmueble-module-btn{
+
+width:100%;
+margin-top:12px;
+
+}
+
+.inmueble-empty{
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+text-align:center;
+height:100%;
+padding:40px;
+color:var(--color-text-secondary);
+}
+.inmueble-empty-icon{
+width:90px;
+height:90px;
+border-radius:50%;
+background:rgba(61,107,255,.15);
+color:var(--color-primary-100);
+display:flex;
+justify-content:center;
+align-items:center;
+font-size:42px;
+margin-bottom:24px;
+}
+.inmueble-empty h2{
+margin:0;
+font-size:30px;
+color:var(--color-text-primary);
+}
+.inmueble-empty p{
+margin-top:12px;
+max-width:420px;
+line-height:1.6;
+}
+.inmueble-empty-stats{
+display:flex;
+gap:40px;
+margin:36px 0;
+}
+.inmueble-empty-stat{
+display:flex;
+flex-direction:column;
+align-items:center;
+}
+.inmueble-empty-stat strong{
+font-size:34px;
+color:var(--color-primary-500);
+}
+.inmueble-empty-stat span{
+margin-top:6px;
+color:var(--color-text-secondary);
+font-size:13px;
+}
+.inmueble-empty-help{
+padding:16px 24px;
+border-radius:12px;
+background:var(--color-bg);
+border:1px solid var(--color-border);
+font-size:14px;
+color:var(--color-text-secondary);
+}
+</style>

@@ -1,0 +1,769 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Administracion.js
+    Versión : 0.3.0
+    ==================================================
+    */
+
+    BFW.Administracion = {
+
+        data: null,
+        usuarios: null,
+        solicitudes: null
+
+    };
+
+    // Claves de configuración reconocidas por la app, con una descripción
+    // para que se entienda qué controla cada una. Cada una se pinta como
+    // una tarjeta con "chips" (una por valor) en vez de un texto libre,
+    // para que añadir uno nuevo nunca pueda borrar los que ya había.
+    BFW.Administracion.CLAVES_CONOCIDAS = [
+        { clave: "CASOS_TIPOS", descripcion: "Tipos de caso (Casos)" },
+        { clave: "DOCUMENTOS_TIPOS_PDF", descripcion: "Tipos de documento PDF (Documentos)" },
+        { clave: "DOCUMENTOS_TIPOS_FOTO", descripcion: "Subtipos de foto (Documentos)" },
+        { clave: "AGENDA_TIPOS", descripcion: "Tipos de cita (Agenda)" },
+        { clave: "CATALOGO_FAMILIAS", descripcion: "Familias de producto (Catálogo)" }
+    ];
+
+    /**
+     * Lista de partida de cada clave (la que ya usa la app por código),
+     * para cuando todavía no existe una fila en CONFIG para esa clave.
+     */
+    BFW.Administracion.valoresPorDefecto = function(clave){
+
+        if(clave === "CASOS_TIPOS"){
+            return BFW.Casos.TIPOS_POR_DEFECTO.slice();
+        }
+
+        if(clave === "DOCUMENTOS_TIPOS_PDF"){
+            return BFW.Documentos.TIPOS_PDF_POR_DEFECTO.slice();
+        }
+
+        if(clave === "DOCUMENTOS_TIPOS_FOTO"){
+            return BFW.Documentos.TIPOS_FOTO_POR_DEFECTO.slice();
+        }
+
+        if(clave === "AGENDA_TIPOS"){
+            return BFW.Agenda.TIPOS_POR_DEFECTO.slice();
+        }
+
+        if(clave === "CATALOGO_FAMILIAS"){
+            return BFW.Catalogo.FAMILIAS_POR_DEFECTO.slice();
+        }
+
+        return [];
+
+    };
+
+    /**
+     * Lista de valores que está usando AHORA MISMO una clave: si ya hay
+     * una fila guardada en CONFIG se usa esa, si no, la de partida.
+     */
+    BFW.Administracion.listaActual = function(clave){
+
+        const fila = BFW.Administracion.data.find(function(i){ return i.clave === clave; });
+
+        if(fila && fila.valor){
+
+            return fila.valor
+                .split(",")
+                .map(function(v){ return v.trim(); })
+                .filter(function(v){ return v !== ""; });
+
+        }
+
+        return BFW.Administracion.valoresPorDefecto(clave);
+
+    };
+
+    BFW.Administracion.escapar = function(texto){
+
+        return String(texto)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+    };
+
+    /* ==================================================
+       CARGA DE DATOS
+    ================================================== */
+
+    BFW.Administracion.cargarTodo = function(callback){
+
+        let pendientes = 3;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0 && callback){
+
+                callback();
+
+            }
+
+        }
+
+        BFW.API.getConfig(function(datos){
+
+            BFW.Administracion.data = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.Administracion.cargarUsuarios(comprobar);
+        BFW.Administracion.cargarSolicitudes(comprobar);
+
+    };
+
+    /* ==================================================
+       RENDER PRINCIPAL
+    ================================================== */
+
+    BFW.Administracion.render = function(){
+
+        if(BFW.Administracion.data === null || BFW.Administracion.usuarios === null || BFW.Administracion.solicitudes === null){
+
+            BFW.Administracion.cargarTodo(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="admin-empty"><p>Cargando administración...</p></div>';
+
+        }
+
+        const tarjetas = BFW.Administracion.CLAVES_CONOCIDAS.map(function(c){
+
+            const valores = BFW.Administracion.listaActual(c.clave);
+
+            const chips = valores.map(function(v){
+
+                const vEscapado = BFW.Administracion.escapar(v);
+
+                return `
+
+                    <span class="admin-chip">
+                        ${vEscapado}
+                        <button class="admin-chip-x" title="Eliminar" data-clave="${c.clave}" data-valor="${vEscapado}" onclick="BFW.Administracion.eliminarValorBtn(this)">×</button>
+                    </span>
+
+                `;
+
+            }).join("");
+
+            return `
+
+                <div class="babex-card admin-tipo-card">
+
+                    <div class="admin-tipo-header">
+                        <h3>${c.descripcion}</h3>
+                    </div>
+
+                    <div class="admin-tipo-chips">
+                        ${chips}
+                    </div>
+
+                    <div class="admin-tipo-add">
+
+                        <input id="admin-add-${c.clave}" class="babex-input" type="text" placeholder="Añadir valor nuevo..."
+                            onkeypress="if(event.key==='Enter'){ BFW.Administracion.agregarValor('${c.clave}'); }">
+
+                        <button class="babex-btn-secondary" onclick="BFW.Administracion.agregarValor('${c.clave}')">+ Añadir</button>
+
+                    </div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <div class="admin-panel">
+
+            <div class="admin-header-panel">
+
+                <div class="admin-header">
+
+                    <div>
+                        <div class="babex-overline">Sistema</div>
+                        <h2>Administración</h2>
+                    </div>
+
+                </div>
+
+                <p class="admin-nota admin-intro">Añade valores nuevos a cada lista sin miedo a perder los anteriores: cada uno se guarda por separado y solo se borra el que pulses con la ×.</p>
+
+            </div>
+
+            <div class="admin-tipos">
+
+                <div id="admin-solicitudes-wrap">${BFW.Administracion.renderSolicitudes()}</div>
+
+                ${tarjetas}
+
+                <div id="admin-usuarios-wrap">${BFW.Administracion.renderUsuarios()}</div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    BFW.Administracion.agregarValor = function(clave){
+
+        const campo = document.getElementById("admin-add-" + clave);
+        let nuevo = (campo ? campo.value : "").trim();
+
+        if(!nuevo){
+
+            alert("Escribe un valor antes de añadir.");
+            return;
+
+        }
+
+        nuevo = nuevo.charAt(0).toUpperCase() + nuevo.slice(1);
+
+        const actual = BFW.Administracion.listaActual(clave);
+
+        const yaExiste = actual.some(function(v){ return v.toLowerCase() === nuevo.toLowerCase(); });
+
+        if(yaExiste){
+
+            alert('"' + nuevo + '" ya está en la lista.');
+            return;
+
+        }
+
+        BFW.Administracion.guardarLista(clave, actual.concat([nuevo]));
+
+    };
+
+    BFW.Administracion.eliminarValorBtn = function(boton){
+
+        const clave = boton.getAttribute("data-clave");
+        const valor = boton.getAttribute("data-valor");
+
+        BFW.Administracion.eliminarValor(clave, valor);
+
+    };
+
+    BFW.Administracion.eliminarValor = function(clave, valor){
+
+        const actual = BFW.Administracion.listaActual(clave);
+
+        if(actual.length <= 1){
+
+            alert("Debe quedar al menos un valor en la lista.");
+            return;
+
+        }
+
+        BFW.UI.confirmar('¿Eliminar "' + valor + '"?', function(){
+
+            BFW.Administracion.guardarLista(clave, actual.filter(function(v){ return v !== valor; }));
+
+        });
+
+    };
+
+    BFW.Administracion.guardarLista = function(clave, listaValores){
+
+        const valorStr = listaValores.join(", ");
+        const existente = BFW.Administracion.data.find(function(i){ return i.clave === clave; });
+
+        function terminar(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                alert(resultado.error || "No se ha podido guardar.");
+                return;
+
+            }
+
+            BFW.Administracion.data = null;
+
+            // Los módulos que leen listas desde CONFIG deben recargarla
+            // la próxima vez que se abran, si no seguirían usando la
+            // versión antigua hasta refrescar toda la página.
+            if(typeof BFW.Casos !== "undefined"){
+
+                BFW.Casos.config = null;
+
+            }
+
+            if(typeof BFW.Documentos !== "undefined"){
+
+                BFW.Documentos.config = null;
+
+            }
+
+            if(typeof BFW.Agenda !== "undefined"){
+
+                BFW.Agenda.config = null;
+
+            }
+
+            if(typeof BFW.Catalogo !== "undefined"){
+
+                BFW.Catalogo.config = null;
+
+            }
+
+            BFW.App.render();
+
+        }
+
+        if(existente){
+
+            BFW.API.updateConfig({ clave: clave, valor: valorStr }, terminar);
+
+        } else {
+
+            BFW.API.insertConfig({ clave: clave, valor: valorStr }, terminar);
+
+        }
+
+    };
+
+    /* ==================================================
+       USUARIOS CON ACCESO
+    ================================================== */
+
+    BFW.Administracion.cargarUsuarios = function(callback){
+
+        BFW.API.getUsuarios(function(datos){
+
+            BFW.Administracion.usuarios = Array.isArray(datos) ? datos : [];
+
+            if(callback) callback();
+
+        });
+
+    };
+
+    /**
+     * Vuelve a pintar SOLO las tarjetas de "Solicitudes de acceso" y
+     * "Usuarios con acceso", sin tocar el resto de la pantalla (ni
+     * volver a pedir la configuración de tipos, ni perder el scroll).
+     * Se usa después de aprobar/rechazar una solicitud o de tocar algo
+     * en la lista de usuarios, en vez de BFW.App.render() completo.
+     */
+    BFW.Administracion.refrescarPanel = function(){
+
+        const wrapSolicitudes = document.getElementById("admin-solicitudes-wrap");
+        if(wrapSolicitudes){
+            wrapSolicitudes.innerHTML = BFW.Administracion.renderSolicitudes();
+        }
+
+        const wrapUsuarios = document.getElementById("admin-usuarios-wrap");
+        if(wrapUsuarios){
+            wrapUsuarios.innerHTML = BFW.Administracion.renderUsuarios();
+        }
+
+    };
+
+    BFW.Administracion.renderUsuarios = function(){
+
+        const usuarios = (BFW.Administracion.usuarios || []).slice().sort(function(a,b){
+
+            return (a.nombre || a.email || "").localeCompare(b.nombre || b.email || "", "es");
+
+        });
+
+        const miEmail = (BFW.Auth.usuario && BFW.Auth.usuario.email) || "";
+
+        const filas = usuarios.map(function(u){
+
+            const esYo = u.email === miEmail;
+            const activo = u.activo !== "NO";
+
+            return `
+
+                <div class="admin-usuario-row">
+
+                    <div class="admin-usuario-avatar">${BFW.Auth.iniciales({nombre: u.nombre || u.email})}</div>
+
+                    <div class="admin-usuario-info">
+                        <div class="admin-usuario-nombre">${BFW.Administracion.escapar(u.nombre || "(sin nombre)")}${esYo ? " · tú" : ""}</div>
+                        <div class="admin-usuario-email">${BFW.Administracion.escapar(u.email)}</div>
+                    </div>
+
+                    <select class="babex-input admin-usuario-rol-select" onchange="BFW.Administracion.cambiarRolUsuario(${u.id}, this.value)" ${esYo ? "disabled" : ""}>
+                        <option value="Empleado" ${u.rol=="Empleado"?"selected":""}>Empleado</option>
+                        <option value="Instalador" ${u.rol=="Instalador"?"selected":""}>Instalador</option>
+                        <option value="Admin" ${u.rol=="Admin"?"selected":""}>Admin</option>
+                    </select>
+
+                    <button class="admin-usuario-toggle ${activo?"activo":"inactivo"}" ${esYo ? "disabled" : ""}
+                        onclick="BFW.Administracion.toggleActivoUsuario(${u.id}, '${activo?"SI":"NO"}')">
+                        ${activo?"Activo":"Inactivo"}
+                    </button>
+
+                    <button class="babex-btn-icon" title="Restablecer contraseña" ${esYo ? "disabled" : ""} onclick="BFW.Administracion.restablecerPasswordUsuario(${u.id}, '${BFW.Administracion.escapar(u.email)}')">🔑</button>
+
+                    <button class="babex-btn-icon" title="Eliminar acceso" ${esYo ? "disabled" : ""} onclick="BFW.Administracion.eliminarUsuario(${u.id}, '${BFW.Administracion.escapar(u.email)}')">🗑️</button>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+            <div class="babex-card admin-tipo-card">
+
+                <div class="admin-tipo-header">
+                    <h3>Usuarios con acceso</h3>
+                </div>
+
+                <p class="admin-nota" style="margin-bottom:16px;">Solo estos emails pueden entrar en BABEX (con la contraseña que les asignes). Los Empleados no ven Administración ni pueden editar o eliminar registros. Los Instaladores entran directamente a la vista de móvil, con sus citas y el parte de visita.</p>
+
+                <div class="admin-usuarios-lista">
+                    ${filas || '<p class="admin-nota">Todavía no hay usuarios dados de alta.</p>'}
+                </div>
+
+                <div class="admin-usuario-add">
+
+                    <input id="admin-usuario-email" class="babex-input" type="email" placeholder="email@gmail.com"
+                        onkeypress="if(event.key==='Enter'){ BFW.Administracion.agregarUsuario(); }">
+                    <input id="admin-usuario-nombre" class="babex-input" type="text" placeholder="Nombre"
+                        onkeypress="if(event.key==='Enter'){ BFW.Administracion.agregarUsuario(); }">
+                    <input id="admin-usuario-password" class="babex-input" type="password" placeholder="Contraseña (mín. 6)"
+                        onkeypress="if(event.key==='Enter'){ BFW.Administracion.agregarUsuario(); }">
+
+                    <select id="admin-usuario-rol" class="babex-input">
+                        <option value="Empleado">Empleado</option>
+                        <option value="Instalador">Instalador</option>
+                        <option value="Admin">Admin</option>
+                    </select>
+
+                    <button class="babex-btn-secondary" onclick="BFW.Administracion.agregarUsuario()">+ Añadir usuario</button>
+
+                </div>
+
+            </div>
+
+        `;
+
+    };
+
+    BFW.Administracion.agregarUsuario = function(){
+
+        const email = document.getElementById("admin-usuario-email").value.trim().toLowerCase();
+        const nombre = document.getElementById("admin-usuario-nombre").value.trim();
+        const password = document.getElementById("admin-usuario-password").value;
+        const rol = document.getElementById("admin-usuario-rol").value;
+
+        if(!email || email.indexOf("@") === -1){
+
+            alert("Introduce un email válido.");
+            return;
+
+        }
+
+        if(password.length < 6){
+
+            alert("La contraseña debe tener al menos 6 caracteres.");
+            return;
+
+        }
+
+        const yaExiste = (BFW.Administracion.usuarios || []).some(function(u){ return u.email === email; });
+
+        if(yaExiste){
+
+            alert("Ese email ya tiene acceso.");
+            return;
+
+        }
+
+        BFW.API.insertUsuario({ email: email, nombre: nombre, password: password, rol: rol, activo: "SI" }, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                alert(resultado.error || "No se ha podido dar de alta al usuario.");
+                return;
+
+            }
+
+            BFW.Administracion.cargarUsuarios(function(){
+
+                BFW.Administracion.refrescarPanel();
+
+            });
+
+        });
+
+    };
+
+    BFW.Administracion.restablecerPasswordUsuario = function(id, email){
+
+        BFW.UI.pedir({
+
+            titulo: "Restablecer contraseña",
+            texto: "Se asignará una contraseña nueva a " + email + ". Tendrás que comunicársela.",
+            aceptar: "Restablecer",
+
+            campos: [
+                { id: "nueva",    etiqueta: "Nueva contraseña", tipo: "password", placeholder: "Mínimo 6 caracteres" },
+                { id: "repetida", etiqueta: "Repítela",         tipo: "password", placeholder: "Mínimo 6 caracteres" }
+            ]
+
+        }, function(valores, mostrarError, cerrar){
+
+            if(valores.nueva.length < 6){
+
+                mostrarError("La contraseña debe tener al menos 6 caracteres.");
+                return;
+
+            }
+
+            if(valores.nueva !== valores.repetida){
+
+                mostrarError("Las dos contraseñas no coinciden.");
+                return;
+
+            }
+
+            BFW.API.updateUsuario({ id: id, password: valores.nueva }, function(resultado){
+
+                if(resultado && resultado.ok === false){
+
+                    mostrarError(resultado.error || "No se ha podido cambiar la contraseña.");
+                    return;
+
+                }
+
+                cerrar();
+
+                BFW.UI.success("Contraseña actualizada.");
+
+            });
+
+        });
+
+    };
+
+    BFW.Administracion.cambiarRolUsuario = function(id, rol){
+
+        BFW.API.updateUsuario({ id: id, rol: rol }, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                alert(resultado.error || "No se ha podido cambiar el rol.");
+                return;
+
+            }
+
+            BFW.Administracion.cargarUsuarios(function(){
+
+                BFW.Administracion.refrescarPanel();
+
+            });
+
+        });
+
+    };
+
+    BFW.Administracion.toggleActivoUsuario = function(id, activoActual){
+
+        const nuevoActivo = activoActual === "SI" ? "NO" : "SI";
+
+        BFW.API.updateUsuario({ id: id, activo: nuevoActivo }, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                alert(resultado.error || "No se ha podido actualizar el usuario.");
+                return;
+
+            }
+
+            BFW.Administracion.cargarUsuarios(function(){
+
+                BFW.Administracion.refrescarPanel();
+
+            });
+
+        });
+
+    };
+
+    BFW.Administracion.eliminarUsuario = function(id, email){
+
+        BFW.UI.confirmar('¿Quitar el acceso a "' + email + '"?', function(){
+
+            BFW.API.deleteUsuario(id, function(resultado){
+
+                if(resultado && resultado.ok === false){
+
+                    alert(resultado.error || "No se ha podido eliminar el usuario.");
+                    return;
+
+                }
+
+                BFW.Administracion.cargarUsuarios(function(){
+
+                    BFW.Administracion.refrescarPanel();
+
+                });
+
+            });
+
+        }, { aceptar: "Quitar acceso" });
+
+    };
+
+    /* ==================================================
+       SOLICITUDES DE ACCESO
+       Se crean solas (UsuariosService.resolverSesion, en el servidor)
+       cuando alguien sin acceso intenta entrar, y avisan por email al
+       administrador. Aquí solo se aprueban o se rechazan.
+    ================================================== */
+
+    BFW.Administracion.cargarSolicitudes = function(callback){
+
+        BFW.API.getSolicitudes(function(datos){
+
+            BFW.Administracion.solicitudes = Array.isArray(datos) ? datos : [];
+
+            if(callback) callback();
+
+        });
+
+    };
+
+    BFW.Administracion.renderSolicitudes = function(){
+
+        const solicitudes = (BFW.Administracion.solicitudes || []);
+
+        if(!solicitudes.length){
+            return "";
+        }
+
+        const filas = solicitudes.map(function(s){
+
+            const emailEscapado = BFW.Administracion.escapar(s.email);
+            const nombreEscapado = BFW.Administracion.escapar(s.nombre || "");
+
+            return `
+
+                <div class="admin-usuario-row admin-solicitud-row">
+
+                    <div class="admin-usuario-avatar">${BFW.Auth.iniciales({nombre: s.nombre || s.email})}</div>
+
+                    <div class="admin-usuario-info">
+                        <div class="admin-usuario-nombre">${nombreEscapado || "(sin nombre)"}</div>
+                        <div class="admin-usuario-email">${emailEscapado} · Solicitado el ${s.fecha ? new Date(s.fecha).toLocaleDateString("es-ES") : ""}</div>
+                    </div>
+
+                    <input id="solicitud-nombre-${s.id}" class="babex-input admin-solicitud-nombre" type="text" placeholder="Nombre" value="${nombreEscapado}">
+
+                    <select id="solicitud-rol-${s.id}" class="babex-input admin-usuario-rol-select">
+                        <option value="Empleado">Empleado</option>
+                        <option value="Instalador">Instalador</option>
+                        <option value="Admin">Admin</option>
+                    </select>
+
+                    <button class="babex-btn-secondary" onclick="BFW.Administracion.aprobarSolicitud(${s.id})">Aprobar</button>
+                    <button class="babex-btn-icon" title="Rechazar" onclick="BFW.Administracion.rechazarSolicitud(${s.id}, '${emailEscapado}')">✕</button>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+            <div class="babex-card admin-tipo-card admin-solicitudes-card">
+
+                <div class="admin-tipo-header">
+                    <h3>Solicitudes de acceso <span class="admin-solicitudes-badge">${solicitudes.length}</span></h3>
+                </div>
+
+                <p class="admin-nota" style="margin-bottom:16px;">Estas personas han pedido acceso con su propia contraseña. Confirma el nombre y el rol para aprobarlas (entrarán ya con la contraseña que eligieron), o recházalas.</p>
+
+                <div class="admin-usuarios-lista">
+                    ${filas}
+                </div>
+
+            </div>
+
+        `;
+
+    };
+
+    BFW.Administracion.aprobarSolicitud = function(id){
+
+        const campoNombre = document.getElementById("solicitud-nombre-" + id);
+        const campoRol = document.getElementById("solicitud-rol-" + id);
+
+        const nombre = campoNombre ? campoNombre.value.trim() : "";
+        const rol = campoRol ? campoRol.value : "Empleado";
+
+        BFW.API.aprobarSolicitud(id, nombre, rol, function(resultado){
+
+            if(resultado && resultado.ok === false){
+
+                alert(resultado.error || "No se ha podido aprobar la solicitud.");
+                return;
+
+            }
+
+            // Quita la solicitud aprobada de la lista en memoria (ya no
+            // está pendiente) y recarga solo la lista de usuarios, para
+            // que salga el recién aprobado — sin tocar el resto de la
+            // pantalla ni perder el scroll.
+            BFW.Administracion.solicitudes = (BFW.Administracion.solicitudes || []).filter(function(s){ return s.id !== id; });
+
+            BFW.Administracion.cargarUsuarios(function(){
+
+                BFW.Administracion.refrescarPanel();
+
+            });
+
+        });
+
+    };
+
+    BFW.Administracion.rechazarSolicitud = function(id, email){
+
+        BFW.UI.confirmar('¿Rechazar la solicitud de "' + email + '"?', function(){
+
+            BFW.API.rechazarSolicitud(id, function(resultado){
+
+                if(resultado && resultado.ok === false){
+
+                    alert(resultado.error || "No se ha podido rechazar la solicitud.");
+                    return;
+
+                }
+
+                BFW.Administracion.solicitudes = (BFW.Administracion.solicitudes || []).filter(function(s){ return s.id !== id; });
+
+                BFW.Administracion.refrescarPanel();
+
+            });
+
+        }, { aceptar: "Rechazar" });
+
+    };
+
+</script>

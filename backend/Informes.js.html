@@ -1,0 +1,338 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Informes.js
+    Versión : 0.1.0
+    ==================================================
+    Generación de informes en PDF o CSV. El archivo lo crea el
+    servidor en Drive (dentro de BABEX_Documentos/Informes) y aquí solo
+    se muestra el enlace para abrirlo: dentro del iframe de Apps Script
+    las descargas directas quedan bloqueadas.
+    ==================================================
+    */
+
+    BFW.Informes = {
+
+        tipo: "casos",
+        formato: "pdf",
+        desde: "",
+        hasta: "",
+        generando: false,
+        ultimo: null,      // { nombre, url, registros }
+        error: null
+
+    };
+
+    BFW.Informes.TIPOS = [
+        { clave: "casos",      nombre: "Casos",              descripcion: "Casos abiertos y cerrados, con cliente, tipo y estado." },
+        { clave: "citas",      nombre: "Agenda",             descripcion: "Citas del periodo, con su estado y el cliente." },
+        { clave: "personas",   nombre: "Personas",           descripcion: "Listado de clientes, proveedores y colaboradores." },
+        { clave: "documentos", nombre: "Documentos",         descripcion: "Documentos subidos, con su categoría y cliente." },
+        { clave: "actividad",  nombre: "Actividad",          descripcion: "Quién ha creado, editado o borrado qué." }
+    ];
+
+    BFW.Informes.escapar = function(texto){
+
+        return String(texto == null ? "" : texto)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+    };
+
+    /* ==================================================
+       API
+    ================================================== */
+
+    BFW.API.generarInforme = function(tipo, desde, hasta, formato, callback){
+
+        google.script.run
+
+            .withSuccessHandler(function(resultado){
+
+                callback(resultado);
+
+            })
+
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                callback({ ok: false, error: "No se ha podido generar el informe." });
+
+            })
+
+            .apiGenerarInforme(tipo, desde, hasta, formato, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    // Este archivo se carga después de BFW.UI.js, así que la barra de
+    // progreso no la había enganchado sola: se hace aquí a mano.
+    BFW.UI.engancharCarga("generarInforme");
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    BFW.Informes.elegirTipo = function(clave){
+
+        BFW.Informes.tipo = clave;
+        BFW.Informes.error = null;
+        BFW.App.render();
+
+    };
+
+    BFW.Informes.elegirFormato = function(formato){
+
+        BFW.Informes.formato = formato;
+        BFW.App.render();
+
+    };
+
+    BFW.Informes.cambiarFecha = function(cual, valor){
+
+        BFW.Informes[cual] = valor;
+
+    };
+
+    /**
+     * Atajos de periodo, para no tener que teclear las fechas.
+     */
+    BFW.Informes.periodoRapido = function(cual){
+
+        const hoy = new Date();
+
+        function iso(fecha){
+
+            const mes = String(fecha.getMonth()+1).padStart(2,"0");
+            const dia = String(fecha.getDate()).padStart(2,"0");
+
+            return fecha.getFullYear()+"-"+mes+"-"+dia;
+
+        }
+
+        if(cual === "todo"){
+
+            BFW.Informes.desde = "";
+            BFW.Informes.hasta = "";
+
+        } else if(cual === "mes"){
+
+            BFW.Informes.desde = iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+            BFW.Informes.hasta = iso(hoy);
+
+        } else if(cual === "trimestre"){
+
+            const inicio = new Date(hoy);
+            inicio.setMonth(inicio.getMonth() - 3);
+
+            BFW.Informes.desde = iso(inicio);
+            BFW.Informes.hasta = iso(hoy);
+
+        } else if(cual === "anio"){
+
+            BFW.Informes.desde = iso(new Date(hoy.getFullYear(), 0, 1));
+            BFW.Informes.hasta = iso(hoy);
+
+        }
+
+        BFW.App.render();
+
+    };
+
+    BFW.Informes.generar = function(){
+
+        if(BFW.Informes.generando) return;
+
+        // Se leen del DOM por si se han escrito a mano sin salir del campo.
+        const campoDesde = document.getElementById("informes-desde");
+        const campoHasta = document.getElementById("informes-hasta");
+
+        if(campoDesde) BFW.Informes.desde = campoDesde.value;
+        if(campoHasta) BFW.Informes.hasta = campoHasta.value;
+
+        if(BFW.Informes.desde && BFW.Informes.hasta && BFW.Informes.desde > BFW.Informes.hasta){
+
+            BFW.Informes.error = "La fecha de inicio es posterior a la de fin.";
+            BFW.App.render();
+            return;
+
+        }
+
+        BFW.Informes.generando = true;
+        BFW.Informes.error = null;
+        BFW.Informes.ultimo = null;
+        BFW.App.render();
+
+        BFW.API.generarInforme(
+
+            BFW.Informes.tipo,
+            BFW.Informes.desde,
+            BFW.Informes.hasta,
+            BFW.Informes.formato,
+
+            function(resultado){
+
+                BFW.Informes.generando = false;
+
+                if(!resultado || resultado.ok === false){
+
+                    BFW.Informes.error = (resultado && resultado.error) || "No se ha podido generar el informe.";
+
+                } else {
+
+                    BFW.Informes.ultimo = resultado;
+
+                }
+
+                BFW.App.render();
+
+            }
+
+        );
+
+    };
+
+    /* ==================================================
+       RENDER
+    ================================================== */
+
+    BFW.Informes.render = function(){
+
+        const tarjetasTipo = BFW.Informes.TIPOS.map(function(t){
+
+            const activo = BFW.Informes.tipo === t.clave;
+
+            return `
+
+                <div class="babex-card informe-tipo ${activo ? "informe-tipo-activo" : ""}"
+                    onclick="BFW.Informes.elegirTipo('${t.clave}')">
+
+                    <h3>${t.nombre}</h3>
+                    <p>${t.descripcion}</p>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <div class="admin-panel">
+
+            <div class="admin-header-panel">
+
+                <div class="admin-header">
+
+                    <div>
+                        <div class="babex-overline">Informes</div>
+                        <h2>Exportar informes</h2>
+                    </div>
+
+                </div>
+
+                <p class="admin-nota admin-intro">
+                    Elige qué quieres exportar y en qué formato. El archivo se guarda en
+                    Drive, dentro de BABEX_Documentos/Informes, y se te da el enlace para abrirlo.
+                </p>
+
+            </div>
+
+            <div class="informes-tipos">
+                ${tarjetasTipo}
+            </div>
+
+            <div class="babex-card admin-tipo-card" style="margin-top:18px;">
+
+                <div class="admin-tipo-header">
+                    <h3>Periodo</h3>
+                </div>
+
+                <div class="informes-periodo-rapido">
+                    <button class="babex-btn-secondary" onclick="BFW.Informes.periodoRapido('mes')">Este mes</button>
+                    <button class="babex-btn-secondary" onclick="BFW.Informes.periodoRapido('trimestre')">Últimos 3 meses</button>
+                    <button class="babex-btn-secondary" onclick="BFW.Informes.periodoRapido('anio')">Este año</button>
+                    <button class="babex-btn-secondary" onclick="BFW.Informes.periodoRapido('todo')">Todo</button>
+                </div>
+
+                <div class="informes-fechas">
+
+                    <div>
+                        <label for="informes-desde">Desde</label>
+                        <input id="informes-desde" class="babex-input" type="date"
+                            value="${BFW.Informes.desde}"
+                            onchange="BFW.Informes.cambiarFecha('desde', this.value)">
+                    </div>
+
+                    <div>
+                        <label for="informes-hasta">Hasta</label>
+                        <input id="informes-hasta" class="babex-input" type="date"
+                            value="${BFW.Informes.hasta}"
+                            onchange="BFW.Informes.cambiarFecha('hasta', this.value)">
+                    </div>
+
+                </div>
+
+                <p class="admin-nota">Si dejas las dos fechas vacías, se exporta todo.</p>
+
+            </div>
+
+            <div class="babex-card admin-tipo-card" style="margin-top:18px;">
+
+                <div class="admin-tipo-header">
+                    <h3>Formato</h3>
+                </div>
+
+                <div class="informes-periodo-rapido">
+
+                    <button class="${BFW.Informes.formato === "pdf" ? "babex-btn-primary" : "babex-btn-secondary"}"
+                        onclick="BFW.Informes.elegirFormato('pdf')">PDF</button>
+
+                    <button class="${BFW.Informes.formato === "csv" ? "babex-btn-primary" : "babex-btn-secondary"}"
+                        onclick="BFW.Informes.elegirFormato('csv')">CSV (Excel)</button>
+
+                </div>
+
+                <p class="admin-nota">
+                    El PDF sirve para imprimir o enviar; el CSV, para seguir trabajando los datos en Excel.
+                </p>
+
+                <div style="margin-top:18px;">
+
+                    <button class="babex-btn-primary" style="height:44px;padding:0 26px;"
+                        onclick="BFW.Informes.generar()" ${BFW.Informes.generando ? "disabled" : ""}>
+                        ${BFW.Informes.generando ? "Generando..." : "Generar informe"}
+                    </button>
+
+                </div>
+
+                ${BFW.Informes.error
+                    ? `<div class="auth-error" style="margin-top:16px;">${BFW.Informes.escapar(BFW.Informes.error)}</div>`
+                    : ""}
+
+                ${BFW.Informes.ultimo
+                    ? `<div class="informe-listo">
+
+                        <div>
+                            <strong>${BFW.Informes.escapar(BFW.Informes.ultimo.nombre)}</strong>
+                            <div class="admin-nota" style="margin:2px 0 0;">${BFW.Informes.ultimo.registros} registros · guardado en Drive</div>
+                        </div>
+
+                        <a class="babex-btn-primary" href="${BFW.Informes.ultimo.url}" target="_blank" rel="noopener">Abrir</a>
+
+                       </div>`
+                    : ""}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+</script>

@@ -1,0 +1,1703 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : BFW.js
+    Versión : 0.3.2
+    ==================================================
+    */
+
+    const BFW = {
+
+        version: "0.3.5",
+
+        App: {},
+        Router: {},
+        Layout: {},
+        API: {}
+
+    };
+
+    /* ==================================================
+       ROUTER
+    ================================================== */
+
+    BFW.Router.current = "dashboard";
+
+    BFW.Router.go = function(view){
+
+        // Vacía el buscador de todos los módulos al cambiar de pantalla,
+        // para que no se quede un filtro puesto de una visita anterior.
+        ["Personas","Inmuebles","Casos","Empresas","Agenda","Documentos","Administracion"].forEach(function(modulo){
+
+            if(typeof BFW[modulo] !== "undefined" && typeof BFW[modulo].filtro !== "undefined"){
+
+                BFW[modulo].filtro = "";
+
+            }
+
+        });
+
+        BFW.Router.current = view;
+
+        BFW.App.render();
+
+    };
+
+    /**
+     * Pantalla a la que hay que regresar al pulsar Cancelar/Volver.
+     * La rellenan los accesos directos del panel (y cualquier sitio que
+     * lleve al usuario a otro módulo para hacer una sola cosa), para
+     * que al terminar no se quede tirado en un módulo al que no había
+     * entrado por su propio pie.
+     */
+    BFW.Router.volverA = null;
+
+    /**
+     * Lleva a otro módulo recordando de dónde se venía, y ejecuta allí
+     * la acción indicada (por ejemplo, abrir el formulario de "nuevo").
+     */
+    BFW.Router.accionRapida = function(view, accion){
+
+        BFW.Router.volverA = BFW.Router.current;
+        BFW.Router.current = view;
+
+        if(typeof accion === "function"){
+
+            accion();
+
+        } else {
+
+            BFW.App.render();
+
+        }
+
+    };
+
+    /**
+     * Si había una pantalla pendiente de regreso, vuelve a ella y
+     * devuelve true. Si no, devuelve false y cada módulo sigue con su
+     * comportamiento normal (volver a su propio listado).
+     */
+    /**
+     * Abre la ficha de un registro concreto en su módulo, venga de
+     * donde venga (ficha de persona, buscador, panel...).
+     *
+     * Los módulos buscan el registro dentro de sus propios datos, así
+     * que si nunca se ha entrado en ese módulo hay que cargarlos antes
+     * o seleccionar() no encuentra nada.
+     *
+     * Recuerda de dónde se venía, para que "Volver" regrese ahí.
+     */
+    BFW.irAFicha = function(modulo, id){
+
+        const nombres = {
+            personas:   "Personas",
+            inmuebles:  "Inmuebles",
+            casos:      "Casos",
+            empresas:   "Empresas",
+            agenda:     "Agenda",
+            documentos: "Documentos"
+        };
+
+        const M = BFW[nombres[modulo]];
+
+        BFW.Router.volverA = BFW.Router.current;
+        BFW.Router.current = modulo;
+
+        if(!M || typeof M.seleccionar !== "function"){
+
+            BFW.App.render();
+            return;
+
+        }
+
+        // Se usa el cargador completo del módulo, no solo su listado
+        // principal.
+        //
+        // Antes se pedía únicamente M.data y se seleccionaba: la ficha
+        // aparecía sin cliente, sin inmueble y sin caso, porque esos
+        // datos viven en otras listas del propio módulo que nadie había
+        // pedido. Cada módulo sabe qué necesita; aquí solo se le dice
+        // que lo cargue.
+        BFW.asegurarDatos(modulo, function(){
+
+            M.seleccionar(id);
+
+        });
+
+    };
+
+    /**
+     * Evita que una carga en curso se dispare otra vez.
+     *
+     * Mientras un módulo se está cargando, la pantalla muestra
+     * "Cargando..." — y cada repintado vuelve a llamar al cargador.
+     * Sin esto, cinco repintados son cinco tandas de peticiones a la
+     * vez, y la última en llegar puede pisar a la primera.
+     *
+     * Devuelve true si hay que abortar porque ya se está cargando; el
+     * callback recibido se guarda y se ejecuta cuando termine la carga
+     * que ya estaba en marcha.
+     *
+     * Uso, al principio de cada cargarTodo:
+     *
+     *     if(BFW.yaSeEstaCargando(BFW.Agenda, callback)) return;
+     *     ... y al terminar:  BFW.cargaTerminada(BFW.Agenda);
+     */
+    BFW.yaSeEstaCargando = function(M, callback){
+
+        if(M._cargandoTodo){
+
+            if(callback){
+
+                M._colaDeCarga = M._colaDeCarga || [];
+                M._colaDeCarga.push(callback);
+
+            }
+
+            return true;
+
+        }
+
+        M._cargandoTodo = true;
+        M._colaDeCarga = [];
+
+        return false;
+
+    };
+
+    BFW.cargaTerminada = function(M){
+
+        M._cargandoTodo = false;
+
+        const cola = M._colaDeCarga || [];
+
+        M._colaDeCarga = [];
+
+        cola.forEach(function(fn){ fn(); });
+
+    };
+
+    /**
+     * Se asegura de que un módulo tenga TODO lo que necesita para
+     * pintarse, y solo entonces ejecuta el callback.
+     *
+     * Cada módulo declara su propio cargador; si no lo tiene, se cae a
+     * pedir su listado principal.
+     */
+    BFW.asegurarDatos = function(modulo, alTerminar){
+
+        const nombres = {
+            personas:   "Personas",
+            inmuebles:  "Inmuebles",
+            casos:      "Casos",
+            empresas:   "Empresas",
+            agenda:     "Agenda",
+            documentos: "Documentos"
+        };
+
+        const M = BFW[nombres[modulo]];
+
+        if(!M){
+
+            alTerminar();
+            return;
+
+        }
+
+        // Cargador propio del módulo (carga el listado y todo lo
+        // relacionado de una vez).
+        if(typeof M.cargarTodo === "function"){
+
+            M.cargarTodo(alTerminar);
+            return;
+
+        }
+
+        // Si ya tiene su listado, se da por bueno.
+        if(Array.isArray(M.data)){
+
+            alTerminar();
+            return;
+
+        }
+
+        const cargadores = {
+            personas:   BFW.API.getPersonas,
+            inmuebles:  BFW.API.getInmuebles,
+            casos:      BFW.API.getCasos,
+            empresas:   BFW.API.getEmpresas,
+            agenda:     BFW.API.getAgenda,
+            documentos: BFW.API.getDocumentos
+        };
+
+        const cargar = cargadores[modulo];
+
+        if(!cargar){
+
+            alTerminar();
+            return;
+
+        }
+
+        cargar(function(datos){
+
+            M.data = Array.isArray(datos) ? datos : [];
+            alTerminar();
+
+        });
+
+    };
+
+    BFW.Router.regresar = function(){
+
+        if(!BFW.Router.volverA) return false;
+
+        const destino = BFW.Router.volverA;
+
+        BFW.Router.volverA = null;
+        BFW.Router.current = destino;
+
+        BFW.App.render();
+
+        return true;
+
+    };
+
+    /* ==================================================
+       LAYOUT
+    ================================================== */
+
+    BFW.Layout.render = function(content){
+
+    return `
+
+    <div class="babex-shell">
+
+        <aside class="babex-sidebar">
+
+            <div class="sidebar-logo">
+
+                <h1>BABEX</h1>
+
+                <p>Smart Home Solutions</p>
+
+            </div>
+
+            <nav class="sidebar-menu">
+
+                <div class="sidebar-item ${BFW.Router.current=="dashboard"?"active":""}"
+
+                     onclick="BFW.Router.go('dashboard')">
+
+                    <div class="sidebar-icon">🏠</div>
+
+                    <div class="sidebar-title">Dashboard</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="personas"?"active":""}"
+
+                     onclick="BFW.Router.go('personas')">
+
+                    <div class="sidebar-icon">👤</div>
+
+                    <div class="sidebar-title">Personas</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="casos"?"active":""}"
+                     onclick="BFW.Router.go('casos')">
+
+                    <div class="sidebar-icon">📁</div>
+
+                    <div class="sidebar-title">Casos</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="inmuebles"?"active":""}"
+                    onclick="BFW.Router.go('inmuebles')">
+
+                    <div class="sidebar-icon">🏡</div>
+
+                    <div class="sidebar-title">Inmuebles</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="agenda"?"active":""}"
+                     onclick="BFW.Router.go('agenda')">
+
+                    <div class="sidebar-icon">📅</div>
+
+                    <div class="sidebar-title">Agenda</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="empresas"?"active":""}"
+                     onclick="BFW.Router.go('empresas')">
+
+                    <div class="sidebar-icon">🏢</div>
+
+                    <div class="sidebar-title">Empresas</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="documentos"?"active":""}"
+                     onclick="BFW.Router.go('documentos')">
+
+                    <div class="sidebar-icon">📄</div>
+
+                    <div class="sidebar-title">Documentos</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="catalogo"?"active":""}"
+                     onclick="BFW.Router.go('catalogo')">
+
+                    <div class="sidebar-icon">🏷️</div>
+
+                    <div class="sidebar-title">Catálogo</div>
+
+                </div>
+
+                <div class="sidebar-item ${BFW.Router.current=="informes"?"active":""}"
+                     onclick="BFW.Router.go('informes')">
+
+                    <div class="sidebar-icon">📊</div>
+
+                    <div class="sidebar-title">Informes</div>
+
+                </div>
+
+                ${BFW.Auth.esAdmin() ? `
+
+                <div class="sidebar-item ${BFW.Router.current=="administracion"?"active":""}"
+                     onclick="BFW.Router.go('administracion')">
+
+                    <div class="sidebar-icon">⚙️</div>
+
+                    <div class="sidebar-title">Administración</div>
+
+                </div>
+
+                ` : ""}
+
+            </nav>
+
+        </aside>
+
+        <main class="babex-main">
+
+            <header class="babex-header">
+
+                <div class="header-title">
+
+                    BABEX
+
+                </div>
+
+                <div class="header-buscador">
+
+                    ${(typeof BFW.Buscador !== "undefined" && BFW.Buscador.termino && BFW.Router.current !== "buscador")
+                        ? `<button class="babex-btn-secondary header-buscador-volver"
+                             title="Volver a los resultados de la búsqueda"
+                             onclick="BFW.Buscador.volverAResultados()">← Resultados</button>`
+                        : ""}
+
+                    <input id="header-buscador-input" class="babex-input" type="text"
+                        placeholder="Buscar en todo BABEX..."
+                        value="${typeof BFW.Buscador !== "undefined" ? BFW.Buscador.escapar(BFW.Buscador.termino) : ""}"
+                        onkeypress="if(event.key==='Enter'){ BFW.Buscador.desdeCabecera(this.value); }">
+
+                </div>
+
+                <div class="header-user">
+
+                    <div class="auth-usuario">
+
+                        <div class="auth-usuario-avatar">${BFW.Auth.iniciales(BFW.Auth.usuario)}</div>
+
+                        <div class="auth-usuario-info">
+                            <span class="auth-usuario-nombre">${(BFW.Auth.usuario && BFW.Auth.usuario.nombre) || ""}</span>
+                            <span class="auth-usuario-rol">${(BFW.Auth.usuario && BFW.Auth.usuario.rol) || ""}</span>
+                        </div>
+
+                        <button class="auth-usuario-salir" title="Cerrar sesión" onclick="BFW.Auth.cerrarSesion()">Salir</button>
+
+                    </div>
+
+                </div>
+
+            </header>
+
+            <section class="babex-content fade-in">
+
+                ${content}
+
+            </section>
+
+        </main>
+
+    </div>
+
+    `;
+
+    };
+
+    /* ==================================================
+       APP
+    ================================================== */
+
+    BFW.App.render = function(){
+
+        // Guarda qué campo tenía el foco (y la posición del cursor) antes
+        // de repintar. Sin esto, cada letra escrita en un buscador vuelve
+        // a crear el input desde cero y el navegador le quita el foco,
+        // dejando escribir solo un carácter cada vez.
+        const elementoActivo = document.activeElement;
+        let focoId = null;
+        let seleccionInicio = null;
+        let seleccionFin = null;
+
+        if(elementoActivo && elementoActivo.id &&
+           (elementoActivo.tagName === "INPUT" || elementoActivo.tagName === "TEXTAREA")){
+
+            focoId = elementoActivo.id;
+            seleccionInicio = elementoActivo.selectionStart;
+            seleccionFin = elementoActivo.selectionEnd;
+
+        }
+
+        // Los instaladores no ven el panel de oficina: la app entera es
+        // para ellos la vista de campo, con su propia estructura (sin
+        // menú lateral ni cabecera de escritorio).
+        if(BFW.Auth.usuario && BFW.Auth.usuario.rol === "Instalador" && typeof BFW.Instalador !== "undefined"){
+
+            document.getElementById("app").innerHTML = BFW.Instalador.render();
+
+            return;
+
+        }
+
+        let html="";
+
+        switch(BFW.Router.current){
+
+            case "personas":
+
+                html = BFW.Personas.render();
+
+                break;
+
+            case "inmuebles":
+
+                html = BFW.Inmuebles.render();
+
+                break;
+
+            case "casos":
+
+                html = BFW.Casos.render();
+
+                break;
+
+            case "empresas":
+
+                html = BFW.Empresas.render();
+
+                break;
+
+            case "agenda":
+
+                html = BFW.Agenda.render();
+
+                break;
+
+            case "documentos":
+
+                html = BFW.Documentos.render();
+
+                break;
+
+            case "buscador":
+
+                html = BFW.Buscador.render();
+
+                break;
+
+            case "catalogo":
+
+                html = BFW.Catalogo.render();
+
+                break;
+
+            case "informes":
+
+                html = BFW.Informes.render();
+
+                break;
+
+            case "administracion":
+
+                // Aunque el menú lateral ya está oculto para Empleados,
+                // esto evita que alguien fuerce la navegación (URL,
+                // consola) y vea Administración sin ser Admin.
+                html = BFW.Auth.esAdmin() ? BFW.Administracion.render() : BFW.Dashboard.render();
+
+                break;
+
+            case "dashboard":
+
+            default:
+
+                html = BFW.Dashboard.render();
+
+                break;
+
+        }
+
+        document.getElementById("app").innerHTML =
+
+            BFW.Layout.render(html);
+
+        if(focoId){
+
+            const elemento = document.getElementById(focoId);
+
+            if(elemento){
+
+                elemento.focus();
+
+                if(typeof seleccionInicio === "number" && elemento.setSelectionRange){
+
+                    try{
+
+                        elemento.setSelectionRange(seleccionInicio, seleccionFin);
+
+                    }catch(e){}
+
+                }
+
+            }
+
+        }
+
+    };
+    /* ==================================================
+       API
+    ================================================== */
+
+    BFW.API = {};
+
+    /**
+     * Obtiene todas las personas
+     */
+    BFW.API.getPersonas = function(callback){
+
+        google.script.run
+            .withSuccessHandler(function(datos){
+
+                callback(datos);
+
+            })
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                alert("Error leyendo la base de datos.");
+
+            })
+            .apiGetPersonas();
+
+    };
+
+    /**
+     * Obtiene todos los inmuebles
+     */
+    BFW.API.getInmuebles = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo la base de datos de inmuebles.");
+
+        })
+
+        .apiGetInmuebles();
+
+    };
+
+    /**
+     * Inserta una nueva persona
+     */
+    BFW.API.insertPersona = function(persona, callback){
+
+        google.script.run
+
+            .withSuccessHandler(function(resultado){
+
+                if(callback){
+
+                    callback(resultado);
+
+                }
+
+            })
+
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                alert("Error guardando la persona.");
+
+            })
+
+            .apiInsertPersona(persona, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+ * Actualiza una persona
+ */
+BFW.API.updatePersona = function(persona, callback){
+
+google.script.run
+
+    .withSuccessHandler(function(resultado){
+
+        if(callback){
+
+            callback(resultado);
+
+        }
+
+    })
+
+    .withFailureHandler(function(error){
+
+        console.error(error);
+
+        alert("Error actualizando la persona.");
+
+    })
+
+    .apiUpdatePersona(persona, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/**
+ * Elimina una persona
+ */
+ BFW.API.deletePersona = function(id, callback){
+
+google.script.run
+
+    .withSuccessHandler(function(resultado){
+
+        if(callback){
+
+            callback(resultado);
+
+        }
+
+    })
+
+    .withFailureHandler(function(error){
+
+        console.error(error);
+
+        alert("Error eliminando la persona.");
+
+    })
+
+    .apiDeletePersona(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/**
+ * Inserta un nuevo inmueble
+ */
+BFW.API.insertInmueble = function(inmueble, callback){
+
+google.script.run
+
+    .withSuccessHandler(function(resultado){
+
+        if(callback){
+
+            callback(resultado);
+
+        }
+
+    })
+
+    .withFailureHandler(function(error){
+
+        console.error(error);
+
+        alert("Error guardando el inmueble.");
+
+    })
+
+    .apiInsertInmueble(inmueble, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/**
+ * Actualiza un inmueble
+ */
+BFW.API.updateInmueble = function(inmueble, callback){
+
+google.script.run
+
+    .withSuccessHandler(function(resultado){
+
+        if(callback){
+
+            callback(resultado);
+
+        }
+
+    })
+
+    .withFailureHandler(function(error){
+
+        console.error(error);
+
+        alert("Error actualizando el inmueble.");
+
+    })
+
+    .apiUpdateInmueble(inmueble, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+/**
+ * Elimina un inmueble
+ */
+BFW.API.deleteInmueble = function(id, callback){
+
+google.script.run
+
+    .withSuccessHandler(function(resultado){
+
+        if(callback){
+
+            callback(resultado);
+
+        }
+
+    })
+
+    .withFailureHandler(function(error){
+
+        console.error(error);
+
+        alert("Error eliminando el inmueble.");
+
+    })
+
+    .apiDeleteInmueble(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+    /**
+     * Obtiene todos los casos
+     */
+    BFW.API.getCasos = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo la base de datos de casos.");
+
+        })
+
+        .apiGetCasos();
+
+    };
+
+    /**
+     * Inserta un nuevo caso
+     */
+    BFW.API.insertCaso = function(caso, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error guardando el caso.");
+
+        })
+
+        .apiInsertCaso(caso, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza un caso
+     */
+    BFW.API.updateCaso = function(caso, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando el caso.");
+
+        })
+
+        .apiUpdateCaso(caso, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina un caso
+     */
+    BFW.API.deleteCaso = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando el caso.");
+
+        })
+
+        .apiDeleteCaso(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Obtiene todas las empresas
+     */
+    BFW.API.getEmpresas = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo la base de datos de empresas.");
+
+        })
+
+        .apiGetEmpresas();
+
+    };
+
+    /**
+     * Inserta una nueva empresa
+     */
+    BFW.API.insertEmpresa = function(empresa, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error guardando la empresa.");
+
+        })
+
+        .apiInsertEmpresa(empresa, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza una empresa
+     */
+    BFW.API.updateEmpresa = function(empresa, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando la empresa.");
+
+        })
+
+        .apiUpdateEmpresa(empresa, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina una empresa
+     */
+    BFW.API.deleteEmpresa = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando la empresa.");
+
+        })
+
+        .apiDeleteEmpresa(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Obtiene todas las citas de agenda
+     */
+    BFW.API.getAgenda = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo la agenda.");
+
+        })
+
+        .apiGetAgenda();
+
+    };
+
+    /**
+     * Inserta una nueva cita
+     */
+    BFW.API.insertCita = function(cita, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error guardando la cita.");
+
+        })
+
+        .apiInsertCita(cita, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza una cita
+     */
+    BFW.API.updateCita = function(cita, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando la cita.");
+
+        })
+
+        .apiUpdateCita(cita, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina una cita
+     */
+    BFW.API.deleteCita = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando la cita.");
+
+        })
+
+        .apiDeleteCita(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Obtiene todos los documentos
+     */
+    BFW.API.getDocumentos = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo los documentos.");
+
+        })
+
+        .apiGetDocumentos();
+
+    };
+
+    /**
+     * Sube un nuevo documento
+     */
+    BFW.API.insertDocumento = function(documento, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error subiendo el documento.");
+
+            const btn = document.getElementById("documento-btn-guardar");
+
+            if(btn){
+                btn.disabled = false;
+                btn.textContent = "Guardar";
+            }
+
+        })
+
+        .apiInsertDocumento(documento, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza los metadatos de un documento
+     */
+    BFW.API.updateDocumento = function(documento, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando el documento.");
+
+        })
+
+        .apiUpdateDocumento(documento, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina un documento
+     */
+    BFW.API.deleteDocumento = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando el documento.");
+
+        })
+
+        .apiDeleteDocumento(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Obtiene toda la configuración del sistema
+     */
+    BFW.API.getConfig = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo la configuración.");
+
+        })
+
+        .apiGetConfig();
+
+    };
+
+    /**
+     * Inserta una nueva clave de configuración
+     */
+    BFW.API.insertConfig = function(item, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error guardando la clave de configuración.");
+
+        })
+
+        .apiInsertConfig(item, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza una clave de configuración
+     */
+    BFW.API.updateConfig = function(item, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando la clave de configuración.");
+
+        })
+
+        .apiUpdateConfig(item, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina una clave de configuración
+     */
+    BFW.API.deleteConfig = function(clave, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando la clave de configuración.");
+
+        })
+
+        .apiDeleteConfig(clave, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Verifica email + contraseña. No hay sesión todavía, así que no
+     * manda ningún email de usuario.
+     */
+    BFW.API.login = function(email, password, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            callback(resultado);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            callback({ ok: false, error: "Error de conexión iniciando sesión. Inténtalo de nuevo." });
+
+        })
+
+        .apiLogin(email, password);
+
+    };
+
+    /**
+     * Registra una solicitud de acceso nueva. Tampoco requiere sesión.
+     */
+    BFW.API.registrar = function(email, nombre, password, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            callback(resultado);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            callback({ ok: false, error: "Error de conexión enviando la solicitud. Inténtalo de nuevo." });
+
+        })
+
+        .apiRegistrar(email, nombre, password);
+
+    };
+
+    /**
+     * Obtiene los usuarios autorizados (solo Admin; el servidor filtra).
+     */
+    BFW.API.getUsuarios = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo los usuarios.");
+
+        })
+
+        .apiGetUsuarios(BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Da de alta un nuevo usuario autorizado.
+     */
+    BFW.API.insertUsuario = function(usuario, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error guardando el usuario.");
+
+        })
+
+        .apiInsertUsuario(usuario, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Actualiza un usuario autorizado (nombre, rol, activo).
+     */
+    BFW.API.updateUsuario = function(usuario, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error actualizando el usuario.");
+
+        })
+
+        .apiUpdateUsuario(usuario, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Elimina (revoca el acceso de) un usuario autorizado.
+     */
+    BFW.API.deleteUsuario = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error eliminando el usuario.");
+
+        })
+
+        .apiDeleteUsuario(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Obtiene las solicitudes de acceso pendientes (solo Admin; el
+     * servidor filtra).
+     */
+    BFW.API.getSolicitudes = function(callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(datos){
+
+            callback(datos);
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error leyendo las solicitudes de acceso.");
+
+        })
+
+        .apiGetSolicitudes(BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Aprueba una solicitud de acceso: da de alta al usuario.
+     */
+    BFW.API.aprobarSolicitud = function(id, nombre, rol, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error aprobando la solicitud.");
+
+        })
+
+        .apiAprobarSolicitud(id, nombre, rol, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Rechaza una solicitud de acceso.
+     */
+    BFW.API.rechazarSolicitud = function(id, callback){
+
+    google.script.run
+
+        .withSuccessHandler(function(resultado){
+
+            if(callback){
+
+                callback(resultado);
+
+            }
+
+        })
+
+        .withFailureHandler(function(error){
+
+            console.error(error);
+
+            alert("Error rechazando la solicitud.");
+
+        })
+
+        .apiRechazarSolicitud(id, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    /**
+     * Lee una lista de opciones desde la configuración (hoja CONFIG).
+     * configData: el array ya cargado con BFW.API.getConfig (pares clave/valor).
+     * clave: p.ej. "CASOS_TIPOS". El valor se espera separado por comas.
+     * porDefecto: array a usar si esa clave no existe o está vacía, para que
+     * la app siga funcionando igual aunque nadie haya tocado Administración.
+     */
+    BFW.Config = {};
+
+    BFW.Config.obtenerLista = function(configData, clave, porDefecto){
+
+        if(Array.isArray(configData)){
+
+            const item = configData.find(function(c){ return c.clave === clave; });
+
+            if(item && item.valor){
+
+                const lista = item.valor.split(",")
+                    .map(function(v){ return v.trim(); })
+                    .filter(function(v){ return v !== ""; });
+
+                if(lista.length > 0){
+                    return lista;
+                }
+
+            }
+
+        }
+
+        return porDefecto;
+
+    };
+
+    /**
+     * Devuelve la fecha de hoy en hora local (Europe/Madrid), no UTC
+     */
+    BFW.hoyISO = function(){
+
+        const hoy = new Date();
+        const mes = String(hoy.getMonth()+1).padStart(2,"0");
+        const dia = String(hoy.getDate()).padStart(2,"0");
+        return hoy.getFullYear()+"-"+mes+"-"+dia;
+
+    };
+
+    /**
+     * Convierte una fecha "YYYY-MM-DD" a formato español "DD/MM/YYYY"
+     */
+    BFW.formatearFecha = function(fechaISO){
+
+        if(!fechaISO) return "—";
+
+        const partes = fechaISO.split("-");
+
+        if(partes.length !== 3) return fechaISO;
+
+        return partes[2] + "/" + partes[1] + "/" + partes[0];
+
+    };
+
+    /* ==================================================
+       START
+    ================================================== */
+
+    window.addEventListener("load",()=>{
+
+        requestAnimationFrame(()=>{
+
+            BFW.Auth.iniciar();
+
+        });
+
+    });
+
+    </script>

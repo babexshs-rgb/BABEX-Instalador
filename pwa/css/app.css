@@ -1,0 +1,544 @@
+/*
+==================================================
+BABEX Instalador (PWA)
+Archivo : app.css
+==================================================
+Este archivo existe, sobre todo, para arreglar dos quejas concretas
+tras probar la primera versión en una visita real:
+
+  1. "Tenía que ampliar continuamente la pantalla para ver los
+     campos." → Base de letra grande (18px), controles altos
+     (mínimo 52px de alto táctil), inputs a 17px (por debajo de 16px
+     iOS hace zoom automático al enfocar, así que nos quedamos por
+     encima con margen). Nada depende de acercar los dedos.
+
+  2. "El botón de foto está muy pegado al de seguir." → El botón de
+     foto NUNCA flota encima ni al lado del botón "Siguiente". Vive en
+     su propia franja, con su propio color de fondo, separada del pie
+     de navegación por un hueco visible (16px) y una línea divisoria.
+     Son dos zonas de la pantalla claramente distintas al tacto y a la
+     vista, no dos botones vecinos.
+==================================================
+*/
+
+:root {
+
+  --azul-marino: #16294A;
+  --azul-marino-claro: #1F3A66;
+  --azul-senal: #2F7BF6;
+  --azul-senal-claro: #5C9DFF;
+  --verde: #1F9D63;
+  --rojo: #D64545;
+  --ambar: #C9891B;
+
+  --texto: #16294A;
+  --texto-suave: #5B6B85;
+  --borde: #DCE3EE;
+  --fondo: #F4F6FA;
+  --tarjeta: #FFFFFF;
+
+  --alto-tactil: 52px;
+  --alto-tactil-grande: 60px;
+  --radio: 14px;
+
+  --pie-alto-secundario: 60px;
+  --pie-alto-principal: 76px;
+
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { font-size: 18px; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+  overscroll-behavior-y: contain;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+button, input, select, textarea { font-family: inherit; }
+
+/* Nunca por debajo de 16px: evita el zoom automático de iOS al enfocar. */
+input, select, textarea { font-size: 17px; }
+
+/* --------------------------------------------------
+   Cabecera
+-------------------------------------------------- */
+
+.cabecera {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  padding-top: max(14px, env(safe-area-inset-top));
+  background: var(--azul-marino);
+  color: #fff;
+}
+
+.cabecera-marca { display: flex; flex-direction: column; line-height: 1.2; }
+.cabecera-marca strong { font-size: 1.15rem; }
+.cabecera-marca span { font-size: 0.8rem; color: #B9C6DD; }
+
+.cabecera-titulo { font-size: 1.05rem; font-weight: 600; }
+
+.cabecera-acciones { display: flex; gap: 8px; }
+
+.icono, .atras {
+  width: var(--alto-tactil);
+  height: var(--alto-tactil);
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.atras { font-size: 1.7rem; }
+
+/* --------------------------------------------------
+   Progreso del parte (5 pasos)
+-------------------------------------------------- */
+
+.progreso {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--azul-marino);
+}
+
+.progreso-punto {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.2);
+}
+
+.progreso-punto.activo { background: var(--azul-senal-claro); }
+.progreso-punto.hecho { background: rgba(255,255,255,0.55); }
+
+/* --------------------------------------------------
+   Contenido general
+-------------------------------------------------- */
+
+.contenido {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 24px;
+  padding-bottom: 24px;
+}
+
+.pantalla-centrada, .vacio {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  color: var(--texto-suave);
+  gap: 8px;
+}
+
+.vacio-icono { font-size: 2.6rem; }
+.vacio h2 { margin: 4px 0 0; color: var(--texto); }
+
+.spinner {
+  width: 34px; height: 34px;
+  border: 4px solid var(--borde);
+  border-top-color: var(--azul-senal);
+  border-radius: 50%;
+  animation: girar 0.8s linear infinite;
+}
+
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* --------------------------------------------------
+   Botones y controles — todos con área táctil generosa
+-------------------------------------------------- */
+
+.boton {
+  min-height: var(--alto-tactil);
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radio);
+  font-size: 1rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.boton-ancho { width: 100%; }
+.boton-alto { min-height: var(--alto-tactil-grande); font-size: 1.05rem; }
+
+.boton-primario { background: var(--azul-senal); color: #fff; }
+.boton-primario:active { background: #2568D6; }
+
+.boton-secundario { background: #fff; color: var(--azul-marino); border: 1.5px solid var(--borde); }
+.boton-secundario:active { background: var(--fondo); }
+
+.boton-foto {
+  background: var(--azul-marino-claro);
+  color: #fff;
+}
+
+.enlace {
+  background: none; border: none; color: var(--azul-senal);
+  font-size: 0.95rem; font-weight: 600; padding: 10px 0;
+  min-height: var(--alto-tactil);
+}
+
+.mini-boton {
+  min-width: 44px; min-height: 44px;
+  border: 1.5px solid var(--borde);
+  background: #fff; border-radius: 10px; font-size: 1.1rem;
+}
+
+.opcion {
+  min-height: var(--alto-tactil);
+  padding: 10px 16px;
+  border: 1.5px solid var(--borde);
+  background: #fff;
+  border-radius: 10px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--texto);
+}
+
+.opcion.activa { background: var(--azul-senal); border-color: var(--azul-senal); color: #fff; }
+
+.fila-dos-botones { display: flex; gap: 12px; margin: 18px 0; }
+.fila-dos-botones .boton { flex: 1; }
+
+/* --------------------------------------------------
+   El pie de un paso del parte: DOS FRANJAS SEPARADAS.
+   Esta es la corrección directa a "el botón de foto está muy
+   pegado al de seguir": nunca comparten fila ni se tocan.
+-------------------------------------------------- */
+
+.paso-pie {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 24px -16px -24px;
+}
+
+.paso-pie-secundaria {
+  padding: 10px 16px;
+  background: var(--fondo);
+  border-top: 1px solid var(--borde);
+}
+
+.paso-pie-principal {
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid var(--borde);
+  /* Hueco visible entre las dos franjas: separación física real,
+     no solo de color. */
+  margin-top: 4px;
+  box-shadow: 0 -2px 10px rgba(22,41,74,0.06);
+}
+
+/* --------------------------------------------------
+   Login
+-------------------------------------------------- */
+
+.pantalla-login {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 24px;
+  gap: 28px;
+}
+
+.login-marca { text-align: center; color: var(--azul-marino); }
+.login-marca img { border-radius: 20px; margin-bottom: 8px; }
+.login-marca h1 { margin: 4px 0 0; font-size: 1.6rem; }
+.login-marca p { margin: 2px 0 0; color: var(--texto-suave); }
+
+.login-form { display: flex; flex-direction: column; gap: 16px; }
+
+.campo { display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; color: var(--texto-suave); }
+.campo input {
+  min-height: var(--alto-tactil);
+  padding: 10px 14px;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+  color: var(--texto);
+}
+
+.login-error { color: var(--rojo); font-size: 0.92rem; margin: 0; }
+.login-nota { text-align: center; color: var(--texto-suave); font-size: 0.85rem; }
+
+/* --------------------------------------------------
+   Tarjetas: visitas, estancias, líneas de producto
+-------------------------------------------------- */
+
+.lista-seccion {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 20px 0 8px;
+}
+
+.lista-seccion:first-child { margin-top: 0; }
+
+.tarjeta-visita {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--tarjeta);
+  border-radius: var(--radio);
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--borde);
+}
+
+.tarjeta-visita-hora {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 58px;
+  color: var(--azul-marino);
+}
+
+.tarjeta-visita-hora strong { font-size: 1.05rem; }
+.tarjeta-visita-hora span { font-size: 0.78rem; color: var(--texto-suave); }
+
+.tarjeta-visita-datos { flex: 1; min-width: 0; }
+.tarjeta-visita-cliente { font-weight: 700; }
+.tarjeta-visita-titulo { color: var(--texto-suave); font-size: 0.92rem; margin-bottom: 4px; }
+.tarjeta-visita-direccion { color: var(--texto-suave); font-size: 0.85rem; margin-bottom: 6px; }
+
+.tarjeta-visita-flecha { font-size: 1.4rem; color: var(--texto-suave); }
+
+.chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--fondo);
+  color: var(--texto-suave);
+  margin-right: 6px;
+}
+
+.chip-estado { background: #E6EEFC; color: var(--azul-senal); }
+
+.tarjeta-estancia, .tarjeta-linea {
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.tarjeta-estancia-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tarjeta-estancia-nombre { font-weight: 700; }
+.tarjeta-estancia-meta { color: var(--texto-suave); font-size: 0.85rem; }
+
+.tarjeta-pulsable { display: flex; align-items: center; justify-content: space-between; }
+.tarjeta-pulsable .flecha { font-size: 1.4rem; color: var(--texto-suave); }
+
+.tarjeta-linea { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tarjeta-linea-nombre { font-weight: 600; }
+.tarjeta-linea-estado { font-size: 0.78rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--fondo); color: var(--texto-suave); white-space: nowrap; }
+.tarjeta-linea-estado.estado-instalado { background: #E4F6ED; color: var(--verde); }
+.tarjeta-linea-estado.estado-propuesto { background: #FDF2E3; color: var(--ambar); }
+
+/* --------------------------------------------------
+   Bloques informativos
+-------------------------------------------------- */
+
+.bloque { margin-bottom: 20px; }
+.bloque-titulo { font-size: 0.85rem; font-weight: 700; color: var(--texto-suave); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+.bloque-valor { font-size: 1.05rem; font-weight: 600; }
+.bloque-secundario { color: var(--texto-suave); font-size: 0.9rem; margin-top: 2px; }
+.bloque-nota { background: #FDF2E3; border-radius: 10px; padding: 12px; font-size: 0.95rem; }
+
+.detalle-cuando { color: var(--texto-suave); font-size: 0.9rem; margin-bottom: 2px; }
+.detalle-titulo { margin: 0 0 10px; font-size: 1.3rem; }
+
+.paso-titulo { margin: 0 0 6px; font-size: 1.25rem; }
+.paso-texto { color: var(--texto-suave); margin: 0 0 16px; font-size: 0.95rem; }
+
+.aviso {
+  background: #FDF2E3;
+  color: #7A5310;
+  border-radius: var(--radio);
+  padding: 14px;
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+}
+
+/* --------------------------------------------------
+   Preguntas del inmueble
+-------------------------------------------------- */
+
+.pregunta-ayuda { color: var(--texto-suave); font-size: 0.82rem; margin: -2px 0 12px; }
+
+.pregunta { margin-bottom: 14px; }
+.pregunta-etiqueta { font-weight: 600; margin-bottom: 8px; }
+.pregunta-botones { display: flex; gap: 10px; flex-wrap: wrap; }
+.pregunta-botones-multi .opcion { flex: 1 1 auto; }
+
+.contador { display: flex; align-items: center; gap: 16px; }
+.contador .opcion { width: var(--alto-tactil); padding: 0; font-size: 1.3rem; }
+.contador-valor { font-size: 1.2rem; font-weight: 700; min-width: 28px; text-align: center; }
+
+/* --------------------------------------------------
+   Buscador de producto
+-------------------------------------------------- */
+
+.buscador {
+  width: 100%;
+  min-height: var(--alto-tactil);
+  padding: 10px 14px;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.resultados { display: flex; flex-direction: column; gap: 8px; max-height: 42vh; overflow-y: auto; }
+
+.resultado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+
+.resultado-familia { color: var(--texto-suave); font-size: 0.8rem; white-space: nowrap; }
+
+.producto-elegido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #E6EEFC;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.producto-elegido-nombre { font-weight: 700; color: var(--azul-marino); }
+
+.fila-cantidad { display: flex; gap: 10px; }
+.fila-cantidad input {
+  width: 90px;
+  min-height: var(--alto-tactil);
+  padding: 10px;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+  text-align: center;
+}
+.fila-cantidad .boton { flex: 1; }
+
+/* --------------------------------------------------
+   Cierre de visita
+-------------------------------------------------- */
+
+.textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+  resize: vertical;
+}
+
+.cierre-botones { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+
+/* --------------------------------------------------
+   Modales
+-------------------------------------------------- */
+
+.modal-capa {
+  position: fixed;
+  inset: 0;
+  background: rgba(22,41,74,0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 22px 18px max(22px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h3 { margin: 0 0 4px; font-size: 1.1rem; }
+
+.modal-opciones { display: flex; flex-wrap: wrap; gap: 10px; }
+.opcion-modal { flex: 1 1 calc(50% - 5px); }
+
+.modal-origen { display: flex; gap: 10px; }
+.modal-origen .boton { flex: 1; }
+
+.modal-input {
+  min-height: var(--alto-tactil);
+  padding: 10px 14px;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+}
+
+/* --------------------------------------------------
+   Barra de estado de sincronización (flotante, siempre visible)
+-------------------------------------------------- */
+
+.barra-sync {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(22,41,74,0.92);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+  z-index: 30;
+  box-shadow: 0 4px 14px rgba(22,41,74,0.25);
+  pointer-events: none;
+}
+
+.barra-sync-offline { background: rgba(201,137,27,0.95); }

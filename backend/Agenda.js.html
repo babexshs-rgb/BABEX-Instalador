@@ -1,0 +1,1248 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Agenda.js
+    Versión : 0.1.0
+    ==================================================
+    */
+
+    BFW.Agenda = {
+
+        data: null,
+        personas: null,
+        casos: null,
+        inmuebles: null,
+        tecnicos: null,
+        config: null,
+        filtro: "",
+        filtroEstado: "todas",
+        view: "lista",
+
+        // Dentro de la pantalla de listado, qué se está viendo: la lista
+        // de siempre o el calendario mensual.
+        subvista: "lista",
+
+        // Mes que se está viendo en el calendario, formato "YYYY-MM".
+        // Se inicializa al mes actual la primera vez que se pinta.
+        mesActual: null,
+
+        // Fecha con la que se precarga el formulario al pulsar un día
+        // vacío del calendario (ver BFW.Agenda.nuevaEnFecha).
+        fechaPreset: null,
+
+        editando: null,
+        current: null
+
+    };
+
+    BFW.Agenda.TIPOS_POR_DEFECTO = ["Visita","Instalación","Mantenimiento","Reparación","Otro"];
+
+    // Paleta de colores para el código de colores del calendario. Se
+    // asignan por orden a la lista de tipos disponibles, así que un tipo
+    // nuevo añadido desde Administración coge automáticamente el
+    // siguiente color libre.
+    BFW.Agenda.PALETA_COLORES = ["#3d6bff","#22c55e","#f59e0b","#ef4444","#a855f7","#14b8a6","#ec4899","#84cc16","#0ea5e9","#f97316"];
+
+    /* ==================================================
+       CARGA DE DATOS
+    ================================================== */
+
+    /**
+     * Instaladores disponibles para asignar una cita. Se define aquí
+     * para no tener que tocar BFW.js.
+     */
+    BFW.API.getTecnicos = function(callback){
+
+        google.script.run
+
+            .withSuccessHandler(function(datos){
+
+                callback(datos);
+
+            })
+
+            .withFailureHandler(function(error){
+
+                console.error(error);
+
+                callback([]);
+
+            })
+
+            .apiGetTecnicos();
+
+    };
+
+    BFW.UI.engancharCarga("getTecnicos");
+
+    /* ==================================================
+       PARTE DE VISITA (lo que registró el instalador)
+    ================================================== */
+
+    // Parte de la cita que se está viendo. null = aún no pedido.
+    BFW.Agenda.parte = null;
+
+    BFW.API.getParteVisita = function(citaId, callback){
+
+        google.script.run
+            .withSuccessHandler(function(r){ callback(r); })
+            .withFailureHandler(function(e){ console.error(e); callback({ ok:false, error:"No se ha podido cargar el parte." }); })
+            .apiGetParteVisita(citaId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    };
+
+    BFW.UI.engancharCarga("getParteVisita");
+
+    BFW.Agenda.renderParte = function(cita){
+
+        if(!cita.inmuebleId){
+
+            return `<p class="cita-observaciones">Esta cita no tiene inmueble vinculado, así que no hay parte de campo asociado.</p>`;
+
+        }
+
+        if(BFW.Agenda.parte === null){
+
+            BFW.API.getParteVisita(cita.id, function(r){
+
+                BFW.Agenda.parte = (r && r.ok) ? r : { estancias: [], lineas: [], fotos: [] };
+                BFW.App.render();
+
+            });
+
+            return `<p class="cita-observaciones">Cargando el parte...</p>`;
+
+        }
+
+        const estancias = BFW.Agenda.parte.estancias || [];
+        const lineas = BFW.Agenda.parte.lineas || [];
+        const fotos = BFW.Agenda.parte.fotos || [];
+
+        if(!estancias.length && !fotos.length){
+
+            return `<p class="cita-observaciones">Todavía no se ha registrado nada en este inmueble.</p>`;
+
+        }
+
+        const instalados = lineas.filter(function(l){ return l.estado === "Instalado"; }).length;
+        const propuestos = lineas.filter(function(l){ return l.estado === "Propuesto"; }).length;
+
+        const listaFotos = BFW.UI.galeria(fotos.slice(0, 12));
+
+        // Resumen, no edición: el inventario se toca en la ficha del
+        // inmueble, que es donde vive. Si se pudiera editar también
+        // aquí, acabaríamos con los mismos datos modificándose desde
+        // dos sitios y sin saber cuál manda.
+        return `
+
+        <div class="parte-visita">
+
+            <div class="parte-resumen">
+
+                <div class="parte-dato">
+                    <strong>${estancias.length}</strong>
+                    <span>estancia${estancias.length === 1 ? "" : "s"}</span>
+                </div>
+
+                <div class="parte-dato">
+                    <strong>${instalados}</strong>
+                    <span>instalado${instalados === 1 ? "" : "s"}</span>
+                </div>
+
+                <div class="parte-dato">
+                    <strong>${propuestos}</strong>
+                    <span>propuesto${propuestos === 1 ? "" : "s"}</span>
+                </div>
+
+                <div class="parte-dato">
+                    <strong>${fotos.length}</strong>
+                    <span>foto${fotos.length === 1 ? "" : "s"}</span>
+                </div>
+
+            </div>
+
+            <button class="babex-btn-primary parte-boton"
+                onclick="BFW.irAFicha('inmuebles', ${cita.inmuebleId})">
+                Abrir el inmueble para ver y editar el detalle
+            </button>
+
+            ${fotos.length ? `
+
+            <div class="parte-fotos-bloque">
+
+                <h4>Fotos${fotos.length > 12 ? " (las 12 más recientes de " + fotos.length + ")" : ""}</h4>
+
+                ${listaFotos}
+
+            </div>
+
+            ` : ""}
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Agenda.cargarTodo = function(callback){
+
+        if(BFW.yaSeEstaCargando(BFW.Agenda, callback)) return;
+
+        let pendientes = 6;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0){
+
+                BFW.cargaTerminada(BFW.Agenda);
+
+                if(callback) callback();
+
+            }
+
+        }
+
+        BFW.API.getAgenda(function(datos){
+
+            BFW.Agenda.data = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getPersonas(function(datos){
+
+            BFW.Agenda.personas = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getCasos(function(datos){
+
+            BFW.Agenda.casos = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getInmuebles(function(datos){
+
+            BFW.Agenda.inmuebles = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getConfig(function(datos){
+
+            BFW.Agenda.config = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getTecnicos(function(datos){
+
+            BFW.Agenda.tecnicos = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    };
+
+    /**
+     * Nombre del instalador asignado a una cita, para mostrarlo en la
+     * lista y en la ficha.
+     */
+    BFW.Agenda.nombreTecnico = function(tecnicoId){
+
+        if(!tecnicoId || !BFW.Agenda.tecnicos) return "";
+
+        const t = BFW.Agenda.tecnicos.find(function(x){ return Number(x.id) === Number(tecnicoId); });
+
+        return t ? t.nombre : "";
+
+    };
+
+    /**
+     * Tipos de cita disponibles: los de Administración (clave AGENDA_TIPOS)
+     * si existen, si no los de siempre.
+     */
+    BFW.Agenda.tiposDisponibles = function(){
+
+        return BFW.Config.obtenerLista(BFW.Agenda.config, "AGENDA_TIPOS", BFW.Agenda.TIPOS_POR_DEFECTO);
+
+    };
+
+    /**
+     * Color asignado a un tipo de cita, según su posición en la lista de
+     * tipos disponibles (estable mientras no se reordene esa lista).
+     */
+    BFW.Agenda.colorTipo = function(tipo){
+
+        const tipos = BFW.Agenda.tiposDisponibles();
+        let idx = tipos.indexOf(tipo);
+
+        if(idx === -1) idx = tipos.length;
+
+        return BFW.Agenda.PALETA_COLORES[idx % BFW.Agenda.PALETA_COLORES.length];
+
+    };
+
+    /* ==================================================
+       HELPERS
+    ================================================== */
+
+    BFW.Agenda.nombrePersona = function(id){
+
+        if(!id || !BFW.Agenda.personas) return "Sin cliente";
+
+        const persona = BFW.Agenda.personas.find(function(p){ return Number(p.id) === Number(id); });
+
+        return persona ? (persona.nombre + " " + (persona.apellidos || "")).trim() : "Cliente no encontrado";
+
+    };
+
+    BFW.Agenda.direccionInmueble = function(id){
+
+        if(!id || !BFW.Agenda.inmuebles) return null;
+
+        const inmueble = BFW.Agenda.inmuebles.find(function(i){ return Number(i.id) === Number(id); });
+
+        return inmueble ? inmueble.direccion : null;
+
+    };
+
+    BFW.Agenda.tituloCaso = function(id){
+
+        if(!id || !BFW.Agenda.casos) return null;
+
+        const caso = BFW.Agenda.casos.find(function(c){ return Number(c.id) === Number(id); });
+
+        return caso ? (caso.tipo + " — " + (caso.descripcion || "")) : null;
+
+    };
+
+    BFW.Agenda.citasDelDia = function(fechaISO){
+
+        if(!BFW.Agenda.data) return [];
+
+        return BFW.Agenda.data
+            .filter(function(c){ return c.fecha === fechaISO && c.estado !== "Cancelada"; })
+            .sort(function(a,b){ return (a.hora||"").localeCompare(b.hora||""); });
+
+    };
+
+    /* ==================================================
+       RENDER PRINCIPAL
+    ================================================== */
+
+    BFW.Agenda.render = function(){
+
+        // Se comprueban TODAS las listas que usa la pantalla, no solo
+        // las citas: si se pinta con las citas cargadas pero sin las
+        // personas, las tarjetas salen sin cliente ni inmueble.
+        if(BFW.Agenda.data === null || BFW.Agenda.personas === null || BFW.Agenda.casos === null ||
+           BFW.Agenda.inmuebles === null || BFW.Agenda.config === null || BFW.Agenda.tecnicos === null){
+
+            BFW.Agenda.cargarTodo(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="agenda-empty"><p>Cargando agenda...</p></div>';
+
+        }
+
+        switch(BFW.Agenda.view){
+
+            case "detalle":
+                return BFW.Agenda.renderDetalle();
+
+            case "formulario":
+                return BFW.Agenda.renderFormularioBase(BFW.Agenda.editando);
+
+            case "lista":
+            default:
+                return BFW.Agenda.subvista === "calendario" ? BFW.Agenda.renderCalendario() : BFW.Agenda.renderLista();
+
+        }
+
+    };
+
+    /**
+     * Botones "Lista" / "Calendario" que se repiten en la cabecera de
+     * ambas vistas.
+     */
+    BFW.Agenda.renderToggleVista = function(){
+
+        return `
+
+            <div class="agenda-vista-toggle">
+
+                <button class="agenda-vista-btn ${BFW.Agenda.subvista=="lista"?"activo":""}" onclick="BFW.Agenda.cambiarVista('lista')">☰ Lista</button>
+                <button class="agenda-vista-btn ${BFW.Agenda.subvista=="calendario"?"activo":""}" onclick="BFW.Agenda.cambiarVista('calendario')">📅 Calendario</button>
+
+            </div>
+
+        `;
+
+    };
+
+    BFW.Agenda.cambiarVista = function(vista){
+
+        BFW.Agenda.subvista = vista;
+        BFW.App.render();
+
+    };
+
+    /* ==================================================
+       LISTA
+    ================================================== */
+
+    BFW.Agenda.renderLista = function(){
+
+        const filtro = (BFW.Agenda.filtro || "").toLowerCase();
+        const filtroEstado = BFW.Agenda.filtroEstado || "todas";
+
+        let lista = BFW.Agenda.data.filter(function(c){
+
+            const coincideTexto = filtro === "" ||
+                (c.titulo || "").toLowerCase().indexOf(filtro) !== -1 ||
+                BFW.Agenda.nombrePersona(c.personaId).toLowerCase().indexOf(filtro) !== -1;
+
+            const coincideEstado = filtroEstado === "todas" ||
+                (c.estado || "").toLowerCase() === filtroEstado;
+
+            return coincideTexto && coincideEstado;
+
+        });
+
+        lista.sort(function(a,b){
+
+            const fa = (a.fecha||"") + " " + (a.hora||"");
+            const fb = (b.fecha||"") + " " + (b.hora||"");
+            return fa.localeCompare(fb);
+
+        });
+
+        const badgeEstado = {
+            "Pendiente": "babex-badge-warning",
+            "Confirmada": "babex-badge-success",
+            "Realizada": "babex-badge-success",
+            "Cancelada": "babex-badge-danger"
+        };
+
+        let filas = lista.map(function(c){
+
+            const badgeClass = badgeEstado[c.estado] || "babex-badge-warning";
+
+            return `
+
+                <div class="cita-list-card" onclick="BFW.Agenda.seleccionar(${c.id})">
+
+                    <div class="cita-list-fecha">
+
+                        <div class="cita-list-dia">${(c.fecha || "").split("-")[2] || "--"}</div>
+                        <div class="cita-list-mes">${BFW.Agenda.mesCorto(c.fecha)}</div>
+
+                    </div>
+
+                    <span class="cita-tipo-dot" style="background:${BFW.Agenda.colorTipo(c.tipo)};" title="${c.tipo || "Visita"}"></span>
+
+                    <div class="cita-list-info">
+
+                        <div class="cita-list-title">${c.titulo || "Cita"} — ${BFW.Agenda.nombrePersona(c.personaId)}</div>
+
+                        <div class="cita-list-sub">${c.tipo || "Visita"} · ${c.hora || "Sin hora"}${c.notas ? " · " + c.notas : ""}</div>
+
+                    </div>
+
+                    <div class="babex-badge ${badgeClass}">${c.estado}</div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        if(lista.length === 0){
+
+            filas = '<div class="agenda-empty"><p>No se han encontrado citas.</p></div>';
+
+        }
+
+        return `
+
+        <div class="agenda-panel">
+
+            <div class="agenda-header-panel">
+
+                <div class="agenda-header">
+
+                    <div>
+                        <div class="babex-overline">Planificación</div>
+                        <h2>Agenda</h2>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:14px;">
+
+                        ${BFW.Agenda.renderToggleVista()}
+
+                        <button class="babex-btn-primary" onclick="BFW.Agenda.nueva()">+ Nueva cita</button>
+
+                    </div>
+
+                </div>
+
+                <div class="agenda-toolbar">
+
+                    <div class="agenda-search">
+
+                        <span class="agenda-search-icon">🔍</span>
+
+                        <input id="txtBuscarCita" class="babex-input" type="text" placeholder="Buscar por cliente o título..."
+                            value="${BFW.Agenda.filtro || ""}"
+                            oninput="BFW.Agenda.buscar(this.value)">
+
+                    </div>
+
+                </div>
+
+                <div class="agenda-filtros">
+
+                    <div class="cita-chip cita-chip-todas ${filtroEstado=="todas"?"activo":""}" onclick="BFW.Agenda.filtrarEstado('todas')">Todas</div>
+                    <div class="cita-chip cita-chip-pendiente ${filtroEstado=="pendiente"?"activo":""}" onclick="BFW.Agenda.filtrarEstado('pendiente')">Pendiente</div>
+                    <div class="cita-chip cita-chip-confirmada ${filtroEstado=="confirmada"?"activo":""}" onclick="BFW.Agenda.filtrarEstado('confirmada')">Confirmada</div>
+                    <div class="cita-chip cita-chip-realizada ${filtroEstado=="realizada"?"activo":""}" onclick="BFW.Agenda.filtrarEstado('realizada')">Realizada</div>
+                    <div class="cita-chip cita-chip-cancelada ${filtroEstado=="cancelada"?"activo":""}" onclick="BFW.Agenda.filtrarEstado('cancelada')">Cancelada</div>
+
+                </div>
+
+            </div>
+
+            <div class="agenda-list">
+
+                ${filas}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Agenda.mesCorto = function(fecha){
+
+        const meses = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+
+        if(!fecha) return "";
+
+        const partes = fecha.split("-");
+
+        if(partes.length < 2) return "";
+
+        const idx = Number(partes[1]) - 1;
+
+        return meses[idx] || "";
+
+    };
+
+    /* ==================================================
+       CALENDARIO
+    ================================================== */
+
+    BFW.Agenda.NOMBRES_MES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    BFW.Agenda.NOMBRES_DIA = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+
+    BFW.Agenda.renderCalendario = function(){
+
+        if(!BFW.Agenda.mesActual){
+
+            BFW.Agenda.mesActual = BFW.hoyISO().slice(0,7);
+
+        }
+
+        const partes = BFW.Agenda.mesActual.split("-");
+        const anio = Number(partes[0]);
+        const mes = Number(partes[1]); // 1-12
+
+        const nombreMes = BFW.Agenda.NOMBRES_MES[mes-1] + " " + anio;
+
+        const primerDiaSemana = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // 0=Lunes
+        const diasEnMes = new Date(anio, mes, 0).getDate();
+        const hoyISO = BFW.hoyISO();
+
+        const celdas = [];
+
+        for(let i=0; i<primerDiaSemana; i++){
+            celdas.push(null);
+        }
+
+        for(let dia=1; dia<=diasEnMes; dia++){
+            celdas.push(dia);
+        }
+
+        while(celdas.length % 7 !== 0){
+            celdas.push(null);
+        }
+
+        const celdasHtml = celdas.map(function(dia){
+
+            if(dia === null){
+
+                return '<div class="agenda-dia-celda agenda-dia-vacia"></div>';
+
+            }
+
+            const fechaISO = anio + "-" + String(mes).padStart(2,"0") + "-" + String(dia).padStart(2,"0");
+            const citas = BFW.Agenda.citasDelDia(fechaISO);
+            const esHoy = fechaISO === hoyISO;
+
+            const maxVisibles = 3;
+            const visibles = citas.slice(0, maxVisibles);
+            const restantes = citas.length - visibles.length;
+
+            const chips = visibles.map(function(c){
+
+                return `
+
+                    <div class="agenda-cita-chip" style="background:${BFW.Agenda.colorTipo(c.tipo)};" title="${c.hora||""} — ${c.titulo||"Cita"} (${c.tipo||"Visita"})" onclick="event.stopPropagation(); BFW.Agenda.seleccionar(${c.id});">
+                        ${c.hora ? c.hora + " · " : ""}${c.titulo || "Cita"}
+                    </div>
+
+                `;
+
+            }).join("");
+
+            const masHtml = restantes > 0
+                ? `<div class="agenda-cita-mas">+${restantes} más</div>`
+                : "";
+
+            return `
+
+                <div class="agenda-dia-celda ${esHoy?"agenda-dia-hoy":""}" onclick="BFW.Agenda.nuevaEnFecha('${fechaISO}')">
+
+                    <div class="agenda-dia-numero">${dia}</div>
+
+                    <div class="agenda-dia-citas">
+                        ${chips}
+                        ${masHtml}
+                    </div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        const leyenda = BFW.Agenda.tiposDisponibles().map(function(t){
+
+            return `
+
+                <div class="agenda-leyenda-item">
+                    <span class="agenda-leyenda-dot" style="background:${BFW.Agenda.colorTipo(t)};"></span>
+                    <span>${t}</span>
+                </div>
+
+            `;
+
+        }).join("");
+
+        return `
+
+        <div class="agenda-panel">
+
+            <div class="agenda-header-panel">
+
+                <div class="agenda-header">
+
+                    <div>
+                        <div class="babex-overline">Planificación</div>
+                        <h2>Agenda</h2>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:14px;">
+
+                        ${BFW.Agenda.renderToggleVista()}
+
+                        <button class="babex-btn-primary" onclick="BFW.Agenda.nueva()">+ Nueva cita</button>
+
+                    </div>
+
+                </div>
+
+                <div class="agenda-calendario-nav">
+
+                    <div class="agenda-calendario-mes">
+                        <button class="babex-btn-icon" onclick="BFW.Agenda.mesAnterior()">‹</button>
+                        <h3>${nombreMes}</h3>
+                        <button class="babex-btn-icon" onclick="BFW.Agenda.mesSiguiente()">›</button>
+                    </div>
+
+                    <button class="babex-btn-secondary" onclick="BFW.Agenda.irAHoy()">Hoy</button>
+
+                </div>
+
+                <div class="agenda-leyenda">
+                    ${leyenda}
+                </div>
+
+            </div>
+
+            <div class="agenda-calendario-scroll">
+
+                <div class="agenda-calendario-diasemana">
+                    ${BFW.Agenda.NOMBRES_DIA.map(function(d){ return `<div>${d}</div>`; }).join("")}
+                </div>
+
+                <div class="agenda-calendario-grid">
+                    ${celdasHtml}
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Agenda.mesAnterior = function(){
+
+        if(!BFW.Agenda.mesActual) BFW.Agenda.mesActual = BFW.hoyISO().slice(0,7);
+
+        const partes = BFW.Agenda.mesActual.split("-");
+        const d = new Date(Number(partes[0]), Number(partes[1])-1, 1);
+        d.setMonth(d.getMonth()-1);
+
+        BFW.Agenda.mesActual = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.mesSiguiente = function(){
+
+        if(!BFW.Agenda.mesActual) BFW.Agenda.mesActual = BFW.hoyISO().slice(0,7);
+
+        const partes = BFW.Agenda.mesActual.split("-");
+        const d = new Date(Number(partes[0]), Number(partes[1])-1, 1);
+        d.setMonth(d.getMonth()+1);
+
+        BFW.Agenda.mesActual = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.irAHoy = function(){
+
+        BFW.Agenda.mesActual = BFW.hoyISO().slice(0,7);
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.nuevaEnFecha = function(fechaISO){
+
+        BFW.Agenda.editando = null;
+        BFW.Agenda.fechaPreset = fechaISO;
+        BFW.Agenda.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    /* ==================================================
+       DETALLE
+    ================================================== */
+
+    BFW.Agenda.renderDetalle = function(){
+
+        const c = BFW.Agenda.current;
+
+        if(!c) return BFW.Agenda.renderLista();
+
+        const badgeEstado = {
+            "Pendiente": "babex-badge-warning",
+            "Confirmada": "babex-badge-success",
+            "Realizada": "babex-badge-success",
+            "Cancelada": "babex-badge-danger"
+        };
+
+        const badgeClass = badgeEstado[c.estado] || "babex-badge-warning";
+        const direccion = BFW.Agenda.direccionInmueble(c.inmuebleId);
+        const caso = BFW.Agenda.tituloCaso(c.casoId);
+
+        return `
+
+        <div class="cita-detail">
+
+            <div class="cita-top">
+
+                <div class="cita-identidad">
+
+                    <div class="cita-avatar-lg">📅</div>
+
+                    <div>
+
+                        <h1 class="cita-title">${c.titulo || "Cita"}</h1>
+
+                        <div class="cita-subtitle">
+                            <span class="babex-badge ${badgeClass}">${c.estado}</span>
+                            <span class="cita-tipo-dot" style="background:${BFW.Agenda.colorTipo(c.tipo)};"></span>
+                            <span>${c.tipo || "Visita"}</span>
+                            <span>· ${BFW.Agenda.nombrePersona(c.personaId)}</span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display:flex; gap:10px;">
+
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-primary" onclick="BFW.Agenda.editar(${c.id})">Editar</button>` : ""}
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-danger" onclick="BFW.Agenda.eliminar(${c.id})">Eliminar</button>` : ""}
+                    <button class="babex-btn-secondary" onclick="BFW.Agenda.volver()">Volver</button>
+
+                </div>
+
+            </div>
+
+            <div class="cita-form-grid">
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Detalle</div>
+                    <h3>Información de la cita</h3>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Fecha</span>
+                        <span>${BFW.formatearFecha(c.fecha)}</span>
+                    </div>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Hora</span>
+                        <span>${c.hora || "—"}</span>
+                    </div>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Cliente</span>
+                        <span>${BFW.Agenda.nombrePersona(c.personaId)}</span>
+                    </div>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Inmueble</span>
+                        <span>${direccion || "Sin vincular"}</span>
+                    </div>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Caso</span>
+                        <span>${caso || "Sin vincular"}</span>
+                    </div>
+
+                    <div class="cita-detail-row">
+                        <span class="babex-overline">Instalador</span>
+                        <span>${BFW.Agenda.nombreTecnico(c.tecnicoId) || "Sin asignar"}</span>
+                    </div>
+
+                </div>
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Notas</div>
+                    <h3>Observaciones</h3>
+
+                    <div class="cita-observaciones">${c.notas || "Sin notas."}</div>
+
+                </div>
+
+                <div class="babex-card" style="grid-column:1 / -1;">
+
+                    <div class="babex-overline">Campo</div>
+                    <h3>Parte de visita</h3>
+
+                    ${BFW.Agenda.renderParte(c)}
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       FORMULARIO (crear / editar)
+    ================================================== */
+
+    BFW.Agenda.renderFormularioBase = function(cita){
+
+        const c = cita || {
+            id: null,
+            personaId: "",
+            casoId: "",
+            inmuebleId: "",
+            titulo: "",
+            fecha: BFW.Agenda.fechaPreset || BFW.hoyISO(),
+            hora: "09:00",
+            estado: "Pendiente",
+            tipo: "Visita",
+            notas: ""
+        };
+
+        const opcionesTipo = BFW.Agenda.tiposDisponibles().map(function(t){
+
+            return `<option ${c.tipo==t?"selected":""}>${t}</option>`;
+
+        }).join("");
+
+        const opcionesPersonas = BFW.Agenda.personas.map(function(p){
+
+            const nombre = (p.nombre + " " + (p.apellidos || "")).trim();
+            const seleccionado = Number(p.id) === Number(c.personaId) ? "selected" : "";
+            return `<option value="${p.id}" ${seleccionado}>${nombre}</option>`;
+
+        }).join("");
+
+        const casosDelCliente = BFW.Agenda.casos.filter(function(cs){
+
+            return Number(cs.personaId) === Number(c.personaId);
+
+        });
+
+        const opcionesCasos = casosDelCliente.map(function(cs){
+
+            const seleccionado = Number(cs.id) === Number(c.casoId) ? "selected" : "";
+            return `<option value="${cs.id}" ${seleccionado}>${cs.tipo} — ${cs.descripcion || ""}</option>`;
+
+        }).join("");
+
+        const inmueblesDelCliente = BFW.Agenda.inmuebles.filter(function(i){
+
+            return Number(i.personaId) === Number(c.personaId);
+
+        });
+
+        const opcionesInmuebles = inmueblesDelCliente.map(function(i){
+
+            const seleccionado = Number(i.id) === Number(c.inmuebleId) ? "selected" : "";
+            return `<option value="${i.id}" ${seleccionado}>${i.direccion}</option>`;
+
+        }).join("");
+
+        return `
+
+        <div class="cita-form-wrapper">
+
+            <div class="cita-editor-header">
+
+                <h2>${c.id ? "Editar cita" : "Nueva cita"}</h2>
+
+            </div>
+
+            <div class="babex-card cita-form-section">
+
+                <h3>Datos de la cita</h3>
+
+                <div class="cita-form-grid">
+
+                    <div class="cita-campo">
+                        <label>Cliente *</label>
+                        <select id="cita-personaId" class="babex-input" onchange="BFW.Agenda.actualizarRelacionados(this.value)">
+                            <option value="">Selecciona un cliente</option>
+                            ${opcionesPersonas}
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Caso (opcional)</label>
+                        <select id="cita-casoId" class="babex-input">
+                            <option value="">Sin vincular</option>
+                            ${opcionesCasos}
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Inmueble (opcional)</label>
+                        <select id="cita-inmuebleId" class="babex-input">
+                            <option value="">Sin vincular</option>
+                            ${opcionesInmuebles}
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Estado</label>
+                        <select id="cita-estado" class="babex-input">
+                            <option ${c.estado=="Pendiente"?"selected":""}>Pendiente</option>
+                            <option ${c.estado=="Confirmada"?"selected":""}>Confirmada</option>
+                            <option ${c.estado=="Realizada"?"selected":""}>Realizada</option>
+                            <option ${c.estado=="Cancelada"?"selected":""}>Cancelada</option>
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Tipo</label>
+                        <select id="cita-tipo" class="babex-input">
+                            ${opcionesTipo}
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Instalador asignado</label>
+                        <select id="cita-tecnicoId" class="babex-input">
+                            <option value="">Sin asignar</option>
+                            ${(BFW.Agenda.tecnicos || []).map(function(t){
+                                return `<option value="${t.id}" ${Number(c.tecnicoId) === Number(t.id) ? "selected" : ""}>${t.nombre}</option>`;
+                            }).join("")}
+                        </select>
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Fecha *</label>
+                        <input id="cita-fecha" class="babex-input" type="date" value="${c.fecha || ""}">
+                    </div>
+
+                    <div class="cita-campo">
+                        <label>Hora *</label>
+                        <input id="cita-hora" class="babex-input" type="time" value="${c.hora || ""}">
+                    </div>
+
+                    <div class="cita-campo" style="grid-column:1 / -1;">
+                        <label>Título *</label>
+                        <input id="cita-titulo" class="babex-input" placeholder="Ej. Instalación cámaras Reolink" value="${c.titulo || ""}">
+                    </div>
+
+                </div>
+
+                <div class="cita-campo" style="margin-top:16px;">
+                    <label>Notas</label>
+                    <textarea id="cita-notas" class="babex-input cita-notas-input">${c.notas || ""}</textarea>
+                </div>
+
+            </div>
+
+            <div class="cita-form-footer">
+
+                <div class="cita-form-buttons">
+                    <button class="babex-btn-secondary" onclick="BFW.Agenda.volver()">Cancelar</button>
+                    <button class="babex-btn-primary" onclick="BFW.Agenda.guardar(${c.id || "null"})">Guardar</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Agenda.actualizarRelacionados = function(personaId){
+
+        const selectCaso = document.getElementById("cita-casoId");
+        const selectInmueble = document.getElementById("cita-inmuebleId");
+
+        const casosDelCliente = BFW.Agenda.casos.filter(function(cs){
+            return Number(cs.personaId) === Number(personaId);
+        });
+
+        const inmueblesDelCliente = BFW.Agenda.inmuebles.filter(function(i){
+            return Number(i.personaId) === Number(personaId);
+        });
+
+        let opcionesCasos = '<option value="">Sin vincular</option>';
+
+        opcionesCasos += casosDelCliente.map(function(cs){
+            return `<option value="${cs.id}">${cs.tipo} — ${cs.descripcion || ""}</option>`;
+        }).join("");
+
+        let opcionesInmuebles = '<option value="">Sin vincular</option>';
+
+        opcionesInmuebles += inmueblesDelCliente.map(function(i){
+            return `<option value="${i.id}">${i.direccion}</option>`;
+        }).join("");
+
+        selectCaso.innerHTML = opcionesCasos;
+        selectInmueble.innerHTML = opcionesInmuebles;
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    /**
+     * Abre el formulario de cita nueva. Admite un preset (por ejemplo
+     * { personaId: 12 }) para llegar con el cliente ya elegido desde
+     * su ficha. Sin id, se trata como cita nueva.
+     */
+    BFW.Agenda.nueva = function(preset){
+
+        BFW.Agenda.editando = preset || null;
+        BFW.Agenda.fechaPreset = null;
+        BFW.Agenda.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.editar = function(id){
+
+        const cita = BFW.Agenda.data.find(function(c){ return Number(c.id) === Number(id); });
+
+        BFW.Agenda.editando = cita || null;
+        BFW.Agenda.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.seleccionar = function(id){
+
+        const cita = BFW.Agenda.data.find(function(c){ return Number(c.id) === Number(id); });
+
+        BFW.Agenda.current = cita || null;
+        BFW.Agenda.view = "detalle";
+
+        // El parte es de la cita que se abre: se descarta el anterior.
+        BFW.Agenda.parte = null;
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.volver = function(){
+
+        BFW.Agenda.view = "lista";
+        BFW.Agenda.editando = null;
+        BFW.Agenda.fechaPreset = null;
+
+        // Si se llegó desde la ficha de un cliente, se vuelve a ella.
+        if(BFW.Router.regresar()) return;
+
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.buscar = function(valor){
+
+        BFW.Agenda.filtro = valor;
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.filtrarEstado = function(estado){
+
+        BFW.Agenda.filtroEstado = estado;
+        BFW.App.render();
+
+    };
+
+    BFW.Agenda.guardar = function(id){
+
+        const cita = {
+            id: id || null,
+            personaId: document.getElementById("cita-personaId").value,
+            casoId: document.getElementById("cita-casoId").value,
+            inmuebleId: document.getElementById("cita-inmuebleId").value,
+            estado: document.getElementById("cita-estado").value,
+            tipo: document.getElementById("cita-tipo").value,
+            fecha: document.getElementById("cita-fecha").value,
+            hora: document.getElementById("cita-hora").value,
+            titulo: document.getElementById("cita-titulo").value.trim(),
+            notas: document.getElementById("cita-notas").value.trim(),
+            tecnicoId: document.getElementById("cita-tecnicoId").value
+        };
+
+        if(!cita.personaId){
+
+            alert("Selecciona un cliente.");
+            return;
+
+        }
+
+        if(!cita.titulo){
+
+            alert("Introduce un título para la cita.");
+            return;
+
+        }
+
+        if(!cita.fecha){
+
+            alert("Selecciona una fecha.");
+            return;
+
+        }
+
+        if(!cita.hora){
+
+            alert("Selecciona una hora.");
+            return;
+
+        }
+
+        function terminar(){
+
+            BFW.Agenda.data = null;
+            BFW.Agenda.view = "lista";
+            BFW.Agenda.editando = null;
+            BFW.Agenda.fechaPreset = null;
+
+            if(typeof BFW.Personas !== "undefined"){
+
+                BFW.Personas.citas = null;
+
+            }
+
+            if(typeof BFW.Dashboard !== "undefined"){
+
+                BFW.Dashboard.citas = null;
+
+            }
+
+            BFW.App.render();
+
+        }
+
+        if(cita.id){
+
+            BFW.API.updateCita(cita, terminar);
+
+        } else {
+
+            BFW.API.insertCita(cita, terminar);
+
+        }
+
+    };
+
+    BFW.Agenda.eliminar = function(id){
+
+        BFW.UI.confirmar("¿Eliminar esta cita?", function(){
+
+            BFW.API.deleteCita(id, function(){
+
+                BFW.Agenda.data = null;
+                BFW.Agenda.view = "lista";
+                BFW.Agenda.current = null;
+
+                if(typeof BFW.Personas !== "undefined"){
+
+                    BFW.Personas.citas = null;
+
+                }
+
+                if(typeof BFW.Dashboard !== "undefined"){
+
+                    BFW.Dashboard.citas = null;
+
+                }
+
+                BFW.App.render();
+
+            });
+
+        });
+
+    };
+
+</script>

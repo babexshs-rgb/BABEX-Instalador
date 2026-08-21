@@ -1,0 +1,1286 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Documentos.js
+    Versión : 0.2.0
+    ==================================================
+    */
+
+    BFW.Documentos = {
+
+        data: null,
+        personas: null,
+        casos: null,
+        inmuebles: null,
+        empresas: null,
+        config: null,
+        filtro: "",
+        filtroTipo: "todos",
+        view: "lista",
+        editando: null,
+        current: null,
+        form: null,
+
+        // De dónde se ha abierto Documentos (una ficha de Persona, Empresa,
+        // Caso o Inmueble): { modulo:"personas|empresas|casos|inmuebles", id }.
+        // Si está definido, Cancelar/Guardar/Eliminar vuelven a esa ficha
+        // en vez de quedarse en el listado de Documentos.
+        origen: null
+
+    };
+
+    BFW.Documentos.TIPOS_PDF_POR_DEFECTO = ["Presupuesto","Factura","Contrato","Informe","Otro"];
+    BFW.Documentos.TIPOS_FOTO_POR_DEFECTO = ["Visita","Instalación","Mantenimiento","Otro"];
+
+    /* ==================================================
+       CARGA DE DATOS
+    ================================================== */
+
+    BFW.Documentos.cargarTodo = function(callback){
+
+        if(BFW.yaSeEstaCargando(BFW.Documentos, callback)) return;
+
+        let pendientes = 6;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0){
+
+                BFW.cargaTerminada(BFW.Documentos);
+
+                if(callback) callback();
+
+            }
+
+        }
+
+        BFW.API.getDocumentos(function(datos){
+
+            BFW.Documentos.data = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getPersonas(function(datos){
+
+            BFW.Documentos.personas = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getCasos(function(datos){
+
+            BFW.Documentos.casos = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getInmuebles(function(datos){
+
+            BFW.Documentos.inmuebles = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getEmpresas(function(datos){
+
+            BFW.Documentos.empresas = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getConfig(function(datos){
+
+            BFW.Documentos.config = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    };
+
+    /**
+     * Tipos de PDF y subtipos de foto: los de Administración si existen
+     * (claves DOCUMENTOS_TIPOS_PDF y DOCUMENTOS_TIPOS_FOTO), si no los de siempre.
+     */
+    BFW.Documentos.tiposPdfDisponibles = function(){
+
+        return BFW.Config.obtenerLista(BFW.Documentos.config, "DOCUMENTOS_TIPOS_PDF", BFW.Documentos.TIPOS_PDF_POR_DEFECTO);
+
+    };
+
+    BFW.Documentos.tiposFotoDisponibles = function(){
+
+        return BFW.Config.obtenerLista(BFW.Documentos.config, "DOCUMENTOS_TIPOS_FOTO", BFW.Documentos.TIPOS_FOTO_POR_DEFECTO);
+
+    };
+
+    /* ==================================================
+       HELPERS
+    ================================================== */
+
+    BFW.Documentos.nombrePersona = function(id){
+
+        if(!id || !BFW.Documentos.personas) return null;
+
+        const persona = BFW.Documentos.personas.find(function(p){ return Number(p.id) === Number(id); });
+
+        return persona ? (persona.nombre + " " + (persona.apellidos || "")).trim() : null;
+
+    };
+
+    BFW.Documentos.empresaPorId = function(id){
+
+        if(!id || !BFW.Documentos.empresas) return null;
+
+        return BFW.Documentos.empresas.find(function(e){ return Number(e.id) === Number(id); }) || null;
+
+    };
+
+    BFW.Documentos.direccionInmueble = function(id){
+
+        if(!id || !BFW.Documentos.inmuebles) return null;
+
+        const inmueble = BFW.Documentos.inmuebles.find(function(i){ return Number(i.id) === Number(id); });
+
+        return inmueble ? inmueble.direccion : null;
+
+    };
+
+    BFW.Documentos.tituloCaso = function(id){
+
+        if(!id || !BFW.Documentos.casos) return null;
+
+        const caso = BFW.Documentos.casos.find(function(c){ return Number(c.id) === Number(id); });
+
+        return caso ? (caso.tipo + " — " + (caso.descripcion || "")) : null;
+
+    };
+
+    BFW.Documentos.entidadVinculada = function(d){
+
+        if(d.personaId){
+
+            return "Cliente: " + (BFW.Documentos.nombrePersona(d.personaId) || "—");
+
+        }
+
+        if(d.empresaId){
+
+            const empresa = BFW.Documentos.empresaPorId(d.empresaId);
+            const etiqueta = (empresa && empresa.tipo === "Proveedor") ? "Proveedor" : "Empresa";
+
+            return etiqueta + ": " + (empresa ? empresa.nombre : "—");
+
+        }
+
+        return "Sin vincular";
+
+    };
+
+    BFW.Documentos.iconoTipo = function(tipo){
+
+        const t = (tipo || "").toLowerCase();
+
+        if(t.indexOf("pdf") !== -1) return "📕";
+        if(t.indexOf("image") !== -1) return "🖼️";
+        if(t.indexOf("spreadsheet") !== -1 || t.indexOf("excel") !== -1) return "📊";
+        if(t.indexOf("word") !== -1 || t.indexOf("document") !== -1) return "📝";
+
+        return "📄";
+
+    };
+
+    BFW.Documentos.categoriaMime = function(tipo){
+
+        const t = (tipo || "").toLowerCase();
+
+        if(t.indexOf("image") !== -1) return "imagen";
+        if(t.indexOf("pdf") !== -1) return "pdf";
+
+        return "otro";
+
+    };
+
+    BFW.Documentos.etiquetaCategoria = function(tipo){
+
+        const cat = BFW.Documentos.categoriaMime(tipo);
+
+        if(cat === "imagen") return "Imagen";
+        if(cat === "pdf") return "PDF";
+
+        return "Documento";
+
+    };
+
+    /**
+     * Mini-listado de documentos reutilizable en las fichas de Persona,
+     * Empresa, Caso e Inmueble: una tarjeta compacta por documento con
+     * icono, nombre, categoría y fecha, que abre el detalle al pulsarla.
+     */
+    BFW.Documentos.renderMiniLista = function(lista, origen){
+
+        if(!lista || lista.length === 0){
+
+            return '<p class="documentos-mini-empty">No hay documentos vinculados todavía.</p>';
+
+        }
+
+        const origenJs = (origen && origen.modulo) ? `{modulo:'${origen.modulo}', id:${origen.id}}` : "null";
+
+        const ordenada = lista.slice().sort(function(a,b){
+
+            return (b.fechaSubida || "").localeCompare(a.fechaSubida || "");
+
+        });
+
+        // Las fotos se muestran con su miniatura en lugar del icono
+        // genérico: en una lista de veinte imágenes, "🖼️" veinte veces
+        // no ayuda a encontrar ninguna.
+        BFW.UI.pedirMiniaturas(
+
+            ordenada
+                .filter(function(d){ return String(d.tipo || "").indexOf("image") === 0; })
+                .map(function(d){ return d.driveFileId; })
+
+        );
+
+        const filas = ordenada.map(function(d){
+
+            const etiqueta = d.categoria || BFW.Documentos.etiquetaCategoria(d.tipo);
+
+            const esImagen = String(d.tipo || "").indexOf("image") === 0;
+            const mini = esImagen ? BFW.UI._miniaturas[d.driveFileId] : null;
+
+            return `
+
+                <div class="documentos-mini-item" onclick="BFW.Documentos.abrirPorId(${d.id}, ${origenJs})">
+
+                    ${mini
+                        ? `<img class="documentos-mini-thumb" src="${mini}" alt="" loading="lazy">`
+                        : `<span class="documentos-mini-icon">${BFW.Documentos.iconoTipo(d.tipo)}</span>`}
+
+                    <span class="documentos-mini-nombre">${d.nombre || "Documento"}</span>
+
+                    <span class="babex-badge babex-badge-warning documentos-mini-badge">${etiqueta}</span>
+
+                    <span class="documentos-mini-fecha">${BFW.formatearFecha(d.fechaSubida)}</span>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        return '<div class="documentos-mini-list">' + filas + '</div>';
+
+    };
+
+    /* ==================================================
+       RENDER PRINCIPAL
+    ================================================== */
+
+    BFW.Documentos.render = function(){
+
+        if(BFW.Documentos.data === null || BFW.Documentos.personas === null || BFW.Documentos.casos === null || BFW.Documentos.inmuebles === null || BFW.Documentos.empresas === null || BFW.Documentos.config === null){
+
+            BFW.Documentos.cargarTodo(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="documentos-empty"><p>Cargando documentos...</p></div>';
+
+        }
+
+        switch(BFW.Documentos.view){
+
+            case "detalle":
+                return BFW.Documentos.renderDetalle();
+
+            case "formulario":
+                return BFW.Documentos.renderFormularioBase(BFW.Documentos.editando);
+
+            case "lista":
+            default:
+                return BFW.Documentos.renderLista();
+
+        }
+
+    };
+
+    /* ==================================================
+       LISTA
+    ================================================== */
+
+    BFW.Documentos.renderLista = function(){
+
+        const filtro = (BFW.Documentos.filtro || "").toLowerCase();
+        const filtroTipo = BFW.Documentos.filtroTipo || "todos";
+
+        let lista = BFW.Documentos.data.filter(function(d){
+
+            const coincideTexto = filtro === "" ||
+                (d.nombre || "").toLowerCase().indexOf(filtro) !== -1 ||
+                BFW.Documentos.entidadVinculada(d).toLowerCase().indexOf(filtro) !== -1;
+
+            const coincideTipo = filtroTipo === "todos" ||
+                BFW.Documentos.categoriaMime(d.tipo) === filtroTipo;
+
+            return coincideTexto && coincideTipo;
+
+        });
+
+        lista.sort(function(a,b){
+
+            return (b.fechaSubida || "").localeCompare(a.fechaSubida || "");
+
+        });
+
+        let filas = lista.map(function(d){
+
+            const etiqueta = d.categoria || BFW.Documentos.etiquetaCategoria(d.tipo);
+
+            return `
+
+                <div class="documento-list-card" onclick="BFW.Documentos.seleccionar(${d.id})">
+
+                    <div class="documento-list-icono">${BFW.Documentos.iconoTipo(d.tipo)}</div>
+
+                    <div class="documento-list-info">
+
+                        <div class="documento-list-title">${d.nombre || "Documento"}</div>
+
+                        <div class="documento-list-sub">${BFW.Documentos.entidadVinculada(d)} · ${BFW.formatearFecha(d.fechaSubida)}</div>
+
+                    </div>
+
+                    <div class="babex-badge babex-badge-warning">${etiqueta}</div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        if(lista.length === 0){
+
+            filas = '<div class="documentos-empty"><p>No se han encontrado documentos.</p></div>';
+
+        }
+
+        return `
+
+        <div class="documentos-panel">
+
+            <div class="documentos-header-panel">
+
+                <div class="documentos-header">
+
+                    <div>
+                        <div class="babex-overline">Archivo</div>
+                        <h2>Documentos</h2>
+                    </div>
+
+                    <button class="babex-btn-primary" onclick="BFW.Documentos.nuevo()">+ Nuevo documento</button>
+
+                </div>
+
+                <div class="documentos-toolbar">
+
+                    <div class="documentos-search">
+
+                        <span class="documentos-search-icon">🔍</span>
+
+                        <input id="txtBuscarDocumento" class="babex-input" type="text" placeholder="Buscar por nombre o cliente..."
+                            value="${BFW.Documentos.filtro || ""}"
+                            oninput="BFW.Documentos.buscar(this.value)">
+
+                    </div>
+
+                </div>
+
+                <div class="documentos-filtros">
+
+                    <div class="documento-chip ${filtroTipo=="todos"?"activo":""}" onclick="BFW.Documentos.filtrarTipo('todos')">Todos</div>
+                    <div class="documento-chip ${filtroTipo=="imagen"?"activo":""}" onclick="BFW.Documentos.filtrarTipo('imagen')">Imágenes</div>
+                    <div class="documento-chip ${filtroTipo=="pdf"?"activo":""}" onclick="BFW.Documentos.filtrarTipo('pdf')">PDF</div>
+                    <div class="documento-chip ${filtroTipo=="otro"?"activo":""}" onclick="BFW.Documentos.filtrarTipo('otro')">Otros</div>
+
+                </div>
+
+            </div>
+
+            <div class="documentos-list">
+
+                ${filas}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       DETALLE
+    ================================================== */
+
+    BFW.Documentos.renderDetalle = function(){
+
+        const d = BFW.Documentos.current;
+
+        if(!d) return BFW.Documentos.renderLista();
+
+        const etiqueta = d.categoria || BFW.Documentos.etiquetaCategoria(d.tipo);
+
+        let filasVinculo = `
+
+            <div class="documento-detail-row">
+                <span class="babex-overline">Vinculado a</span>
+                <span>${BFW.Documentos.entidadVinculada(d)}</span>
+            </div>
+
+        `;
+
+        if(d.personaId){
+
+            filasVinculo += `
+
+                <div class="documento-detail-row">
+                    <span class="babex-overline">Caso</span>
+                    <span>${BFW.Documentos.tituloCaso(d.casoId) || "Sin vincular"}</span>
+                </div>
+
+                <div class="documento-detail-row">
+                    <span class="babex-overline">Inmueble</span>
+                    <span>${BFW.Documentos.direccionInmueble(d.inmuebleId) || "Sin vincular"}</span>
+                </div>
+
+            `;
+
+        }
+
+        return `
+
+        <div class="documento-detail">
+
+            <div class="documento-top">
+
+                <div class="documento-identidad">
+
+                    <div class="documento-avatar-lg">${BFW.Documentos.iconoTipo(d.tipo)}</div>
+
+                    <div>
+
+                        <h1 class="documento-title">${d.nombre || "Documento"}</h1>
+
+                        <div class="documento-subtitle">
+                            <span class="babex-badge babex-badge-warning">${etiqueta}</span>
+                            <span>· ${BFW.formatearFecha(d.fechaSubida)}</span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display:flex; gap:10px;">
+
+                    <a class="babex-btn-secondary" href="${d.url}" target="_blank" rel="noopener">Abrir en Drive</a>
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-primary" onclick="BFW.Documentos.editar(${d.id})">Editar</button>` : ""}
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-danger" onclick="BFW.Documentos.eliminar(${d.id})">Eliminar</button>` : ""}
+                    <button class="babex-btn-secondary" onclick="BFW.Documentos.volver()">Volver</button>
+
+                </div>
+
+            </div>
+
+            <div class="babex-card">
+
+                <div class="babex-overline">Detalle</div>
+                <h3>Vinculación</h3>
+
+                ${filasVinculo}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       FORMULARIO (crear / editar)
+    ================================================== */
+
+    BFW.Documentos.renderFormularioBase = function(documento){
+
+        const form = BFW.Documentos.form;
+
+        const opcionesPersonas = BFW.Documentos.personas.map(function(p){
+
+            const nombre = (p.nombre + " " + (p.apellidos || "")).trim();
+            const sel = Number(p.id) === Number(form.personaId) ? "selected" : "";
+            return `<option value="${p.id}" ${sel}>${nombre}</option>`;
+
+        }).join("");
+
+        const opcionesEmpresas = BFW.Documentos.empresas.filter(function(e){
+
+            return (e.tipo || "Empresa") !== "Proveedor";
+
+        }).map(function(e){
+
+            const sel = Number(e.id) === Number(form.empresaId) ? "selected" : "";
+            return `<option value="${e.id}" ${sel}>${e.nombre}</option>`;
+
+        }).join("");
+
+        const opcionesProveedores = BFW.Documentos.empresas.filter(function(e){
+
+            return e.tipo === "Proveedor";
+
+        }).map(function(e){
+
+            const sel = Number(e.id) === Number(form.empresaId) ? "selected" : "";
+            return `<option value="${e.id}" ${sel}>${e.nombre}</option>`;
+
+        }).join("");
+
+        const casosDelCliente = BFW.Documentos.casos.filter(function(cs){
+
+            return Number(cs.personaId) === Number(form.personaId);
+
+        });
+
+        const opcionesCasos = casosDelCliente.map(function(cs){
+
+            const sel = Number(cs.id) === Number(form.casoId) ? "selected" : "";
+            return `<option value="${cs.id}" ${sel}>${cs.tipo} — ${cs.descripcion || ""}</option>`;
+
+        }).join("");
+
+        const inmueblesDelCliente = BFW.Documentos.inmuebles.filter(function(i){
+
+            return Number(i.personaId) === Number(form.personaId);
+
+        });
+
+        const opcionesInmuebles = inmueblesDelCliente.map(function(i){
+
+            const sel = Number(i.id) === Number(form.inmuebleId) ? "selected" : "";
+            return `<option value="${i.id}" ${sel}>${i.direccion}</option>`;
+
+        }).join("");
+
+        const bloqueVinculo = `
+
+            <div class="documento-campo" style="grid-column:1 / -1;">
+                <label>Vinculado a</label>
+                <div class="documento-vinculo-selector">
+                    <button type="button" id="documento-vinculo-btn-cliente" class="documento-vinculo-btn ${form.vinculo=="cliente"?"activo":""}" onclick="BFW.Documentos.cambiarVinculo('cliente')">Cliente</button>
+                    <button type="button" id="documento-vinculo-btn-empresa" class="documento-vinculo-btn ${form.vinculo=="empresa"?"activo":""}" onclick="BFW.Documentos.cambiarVinculo('empresa')">Empresa</button>
+                    <button type="button" id="documento-vinculo-btn-proveedor" class="documento-vinculo-btn ${form.vinculo=="proveedor"?"activo":""}" onclick="BFW.Documentos.cambiarVinculo('proveedor')">Proveedor</button>
+                </div>
+            </div>
+
+        `;
+
+        // Los tres bloques siguientes están SIEMPRE en el DOM (solo se
+        // muestran/ocultan con estilo). Así, cambiar el vínculo nunca
+        // vuelve a pintar el formulario entero y no se pierden el
+        // archivo seleccionado ni el texto ya escrito.
+
+        const bloqueEntidad = `
+
+            <div id="documento-bloque-cliente" style="display:${form.vinculo=="cliente"?"contents":"none"};">
+
+                <div class="documento-campo">
+                    <label>Cliente *</label>
+                    <select id="documento-personaId" class="babex-input" onchange="BFW.Documentos.cambiarPersona(this.value)">
+                        <option value="">Selecciona un cliente</option>
+                        ${opcionesPersonas}
+                    </select>
+                </div>
+
+                <div class="documento-campo">
+                    <label>Caso (opcional)</label>
+                    <select id="documento-casoId" class="babex-input">
+                        <option value="">Sin vincular</option>
+                        ${opcionesCasos}
+                    </select>
+                </div>
+
+                <div class="documento-campo">
+                    <label>Inmueble (opcional)</label>
+                    <select id="documento-inmuebleId" class="babex-input">
+                        <option value="">Sin vincular</option>
+                        ${opcionesInmuebles}
+                    </select>
+                </div>
+
+            </div>
+
+            <div id="documento-bloque-empresa" class="documento-campo" style="grid-column:1 / -1; display:${form.vinculo=="empresa"?"block":"none"};">
+                <label>Empresa *</label>
+                <select id="documento-empresaId" class="babex-input">
+                    <option value="">Selecciona una empresa</option>
+                    ${opcionesEmpresas}
+                </select>
+            </div>
+
+            <div id="documento-bloque-proveedor" class="documento-campo" style="grid-column:1 / -1; display:${form.vinculo=="proveedor"?"block":"none"};">
+                <label>Proveedor *</label>
+                <select id="documento-proveedorId" class="babex-input">
+                    <option value="">Selecciona un proveedor</option>
+                    ${opcionesProveedores}
+                </select>
+            </div>
+
+        `;
+
+        const bloqueArchivoYCategoria = documento ? `
+
+            <div class="documento-campo" style="grid-column:1 / -1;">
+                <p class="documento-nota">El archivo, el tipo de documento y el nombre se fijan al crear el documento. Para cambiarlos, elimina este documento y sube uno nuevo.</p>
+            </div>
+
+        ` : `
+
+            <div class="documento-campo" style="grid-column:1 / -1;">
+                <label>Archivo *</label>
+                <input id="documento-archivo" class="babex-input" type="file" onchange="BFW.Documentos.onArchivoSeleccionado(this)">
+            </div>
+
+            <div class="documento-campo">
+                <label>Tipo detectado</label>
+                <div id="documento-tipo-detectado-label" class="documento-tipo-detectado">Selecciona un archivo para detectarlo</div>
+            </div>
+
+            <div id="documento-bloque-subtipo-foto" class="documento-campo" style="display:none;">
+                <label>Tipo de foto *</label>
+                <select id="documento-subtipo-foto" class="babex-input">
+                    ${BFW.Documentos.tiposFotoDisponibles().map(function(t){ return `<option value="${t}">${t}</option>`; }).join("")}
+                </select>
+            </div>
+
+            <div id="documento-bloque-tipo-pdf" class="documento-campo" style="display:none;">
+                <label>Tipo de documento *</label>
+                <select id="documento-tipo-pdf" class="babex-input">
+                    ${BFW.Documentos.tiposPdfDisponibles().map(function(t){ return `<option value="${t}">${t}</option>`; }).join("")}
+                </select>
+            </div>
+
+            <div class="documento-campo" style="grid-column:1 / -1;">
+                <label id="documento-label-observacion">Observación (opcional)</label>
+                <input id="documento-observacion" class="babex-input" placeholder="Ej. cuadro eléctrico, servidor, cámara jardín...">
+            </div>
+
+        `;
+
+        return `
+
+        <div class="documento-form-wrapper">
+
+            <div class="documento-editor-header">
+
+                <h2>${documento ? "Editar documento" : "Nuevo documento"}</h2>
+
+            </div>
+
+            <div class="babex-card documento-form-section">
+
+                <h3>Datos del documento</h3>
+
+                <div class="documento-form-grid">
+
+                    ${bloqueArchivoYCategoria}
+
+                    ${bloqueVinculo}
+
+                    ${bloqueEntidad}
+
+                </div>
+
+            </div>
+
+            <div class="documento-form-footer">
+
+                <div class="documento-form-buttons">
+                    <button class="babex-btn-secondary" onclick="BFW.Documentos.volver()">Cancelar</button>
+                    <button id="documento-btn-guardar" class="babex-btn-primary" onclick="BFW.Documentos.guardar(${documento ? documento.id : "null"})">Guardar</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Documentos.cambiarVinculo = function(vinculo){
+
+        BFW.Documentos.form.vinculo = vinculo;
+        BFW.Documentos.form.personaId = "";
+        BFW.Documentos.form.empresaId = "";
+        BFW.Documentos.form.casoId = "";
+        BFW.Documentos.form.inmuebleId = "";
+
+        ["cliente","empresa","proveedor"].forEach(function(v){
+
+            const btn = document.getElementById("documento-vinculo-btn-" + v);
+
+            if(btn){
+                btn.classList.toggle("activo", v === vinculo);
+            }
+
+        });
+
+        const bloqueCliente = document.getElementById("documento-bloque-cliente");
+        const bloqueEmpresa = document.getElementById("documento-bloque-empresa");
+        const bloqueProveedor = document.getElementById("documento-bloque-proveedor");
+
+        if(bloqueCliente) bloqueCliente.style.display = (vinculo === "cliente") ? "contents" : "none";
+        if(bloqueEmpresa) bloqueEmpresa.style.display = (vinculo === "empresa") ? "block" : "none";
+        if(bloqueProveedor) bloqueProveedor.style.display = (vinculo === "proveedor") ? "block" : "none";
+
+        const selPersona = document.getElementById("documento-personaId");
+        const selCaso = document.getElementById("documento-casoId");
+        const selInmueble = document.getElementById("documento-inmuebleId");
+        const selEmpresa = document.getElementById("documento-empresaId");
+        const selProveedor = document.getElementById("documento-proveedorId");
+
+        if(selPersona) selPersona.value = "";
+        if(selCaso) selCaso.innerHTML = '<option value="">Sin vincular</option>';
+        if(selInmueble) selInmueble.innerHTML = '<option value="">Sin vincular</option>';
+        if(selEmpresa) selEmpresa.value = "";
+        if(selProveedor) selProveedor.value = "";
+
+    };
+
+    BFW.Documentos.cambiarPersona = function(personaId){
+
+        BFW.Documentos.form.personaId = personaId;
+        BFW.Documentos.form.casoId = "";
+        BFW.Documentos.form.inmuebleId = "";
+
+        const selectCaso = document.getElementById("documento-casoId");
+        const selectInmueble = document.getElementById("documento-inmuebleId");
+
+        const casosDelCliente = BFW.Documentos.casos.filter(function(cs){
+            return Number(cs.personaId) === Number(personaId);
+        });
+
+        const inmueblesDelCliente = BFW.Documentos.inmuebles.filter(function(i){
+            return Number(i.personaId) === Number(personaId);
+        });
+
+        let opcionesCasos = '<option value="">Sin vincular</option>';
+
+        opcionesCasos += casosDelCliente.map(function(cs){
+            return `<option value="${cs.id}">${cs.tipo} — ${cs.descripcion || ""}</option>`;
+        }).join("");
+
+        let opcionesInmuebles = '<option value="">Sin vincular</option>';
+
+        opcionesInmuebles += inmueblesDelCliente.map(function(i){
+            return `<option value="${i.id}">${i.direccion}</option>`;
+        }).join("");
+
+        if(selectCaso) selectCaso.innerHTML = opcionesCasos;
+        if(selectInmueble) selectInmueble.innerHTML = opcionesInmuebles;
+
+    };
+
+    BFW.Documentos.etiquetaTipoDetectado = function(tipoDetectado){
+
+        if(tipoDetectado === "Foto") return "📷 Foto";
+        if(tipoDetectado === "PDF") return "📕 PDF";
+        if(tipoDetectado) return "📄 Otro";
+
+        return "Selecciona un archivo para detectarlo";
+
+    };
+
+    BFW.Documentos.onArchivoSeleccionado = function(inputEl){
+
+        const archivo = inputEl.files[0];
+        const labelDetectado = document.getElementById("documento-tipo-detectado-label");
+        const bloqueFoto = document.getElementById("documento-bloque-subtipo-foto");
+        const bloquePdf = document.getElementById("documento-bloque-tipo-pdf");
+        const labelObservacion = document.getElementById("documento-label-observacion");
+
+        if(!archivo){
+
+            BFW.Documentos.form.tipoDetectado = "";
+
+            if(labelDetectado) labelDetectado.textContent = BFW.Documentos.etiquetaTipoDetectado("");
+            if(bloqueFoto) bloqueFoto.style.display = "none";
+            if(bloquePdf) bloquePdf.style.display = "none";
+            if(labelObservacion) labelObservacion.textContent = "Observación (opcional)";
+
+            return;
+
+        }
+
+        const tipo = archivo.type || "";
+        let tipoDetectado = "Otro";
+
+        if(tipo.indexOf("image/") === 0){
+            tipoDetectado = "Foto";
+        } else if(tipo === "application/pdf"){
+            tipoDetectado = "PDF";
+        }
+
+        BFW.Documentos.form.tipoDetectado = tipoDetectado;
+
+        if(labelDetectado){
+            labelDetectado.textContent = BFW.Documentos.etiquetaTipoDetectado(tipoDetectado);
+        }
+
+        if(bloqueFoto) bloqueFoto.style.display = (tipoDetectado === "Foto") ? "block" : "none";
+        if(bloquePdf) bloquePdf.style.display = (tipoDetectado === "PDF") ? "block" : "none";
+
+        if(labelObservacion){
+            labelObservacion.textContent = (tipoDetectado === "Foto") ? "Observación *" : "Observación (opcional)";
+        }
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    BFW.Documentos.nuevo = function(){
+
+        BFW.Documentos.editando = null;
+        BFW.Documentos.origen = null;
+
+        BFW.Documentos.form = {
+            vinculo: "cliente",
+            personaId: "",
+            empresaId: "",
+            casoId: "",
+            inmuebleId: "",
+            tipoDetectado: ""
+        };
+
+        BFW.Documentos.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.editar = function(id){
+
+        const documento = BFW.Documentos.data.find(function(d){ return Number(d.id) === Number(id); });
+
+        if(!documento) return;
+
+        let vinculo = "ninguno";
+
+        if(documento.personaId){
+
+            vinculo = "cliente";
+
+        } else if(documento.empresaId){
+
+            const empresa = BFW.Documentos.empresaPorId(documento.empresaId);
+            vinculo = (empresa && empresa.tipo === "Proveedor") ? "proveedor" : "empresa";
+
+        }
+
+        BFW.Documentos.editando = documento;
+
+        BFW.Documentos.form = {
+            vinculo: vinculo,
+            personaId: documento.personaId || "",
+            empresaId: documento.empresaId || "",
+            casoId: documento.casoId || "",
+            inmuebleId: documento.inmuebleId || "",
+            tipoDetectado: ""
+        };
+
+        BFW.Documentos.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.seleccionar = function(id){
+
+        const documento = BFW.Documentos.data.find(function(d){ return Number(d.id) === Number(id); });
+
+        BFW.Documentos.current = documento || null;
+        BFW.Documentos.origen = null;
+        BFW.Documentos.view = "detalle";
+        BFW.App.render();
+
+    };
+
+    /**
+     * Abre el detalle de un documento desde CUALQUIER módulo (Persona,
+     * Empresa, Caso, Inmueble), aunque el módulo Documentos todavía no
+     * se haya cargado, y cambia de pantalla hasta él. Si se indica un
+     * origen, Volver/Eliminar regresarán a esa ficha en vez de al
+     * listado de Documentos.
+     */
+    BFW.Documentos.abrirPorId = function(id, origen){
+
+        function irADetalle(){
+
+            const documento = BFW.Documentos.data.find(function(d){ return Number(d.id) === Number(id); });
+
+            BFW.Documentos.current = documento || null;
+            BFW.Documentos.editando = null;
+            BFW.Documentos.origen = origen || null;
+            BFW.Documentos.view = "detalle";
+            BFW.Router.go("documentos");
+
+        }
+
+        if(BFW.Documentos.data === null){
+
+            BFW.Documentos.cargarTodo(irADetalle);
+
+        } else {
+
+            irADetalle();
+
+        }
+
+    };
+
+    /**
+     * Abre directamente el formulario de "Nuevo documento" desde la
+     * ficha de una Persona/Empresa/Proveedor/Caso/Inmueble, con el
+     * vínculo ya preseleccionado. Si se indica un origen, Cancelar/
+     * Guardar regresarán a esa ficha en vez de al listado de Documentos.
+     */
+    BFW.Documentos.nuevoDesde = function(preset, origen){
+
+        const p = preset || {};
+
+        BFW.Documentos.editando = null;
+        BFW.Documentos.origen = origen || null;
+
+        BFW.Documentos.form = {
+            vinculo: p.vinculo || "cliente",
+            personaId: p.personaId || "",
+            empresaId: p.empresaId || "",
+            casoId: p.casoId || "",
+            inmuebleId: p.inmuebleId || "",
+            tipoDetectado: ""
+        };
+
+        BFW.Documentos.view = "formulario";
+        BFW.Router.go("documentos");
+
+    };
+
+    /**
+     * Vuelve a la ficha (Persona/Empresa/Caso/Inmueble) desde la que se
+     * abrió Documentos. Si algo no cuadra, cae de vuelta al listado de
+     * Documentos para no dejar la pantalla rota.
+     */
+    BFW.Documentos.volverAOrigen = function(origen){
+
+        if(!origen || !origen.modulo){
+
+            BFW.Documentos.view = "lista";
+            BFW.App.render();
+            return;
+
+        }
+
+        if(origen.modulo === "personas" && typeof BFW.Personas !== "undefined"){
+
+            BFW.Router.current = "personas";
+            BFW.Personas.view = "LIST";
+            BFW.Personas.editando = false;
+            BFW.Personas.seleccionar(origen.id);
+            return;
+
+        }
+
+        if(origen.modulo === "empresas" && typeof BFW.Empresas !== "undefined"){
+
+            BFW.Router.current = "empresas";
+            BFW.Empresas.editando = null;
+            BFW.Empresas.seleccionar(origen.id);
+            return;
+
+        }
+
+        if(origen.modulo === "casos" && typeof BFW.Casos !== "undefined"){
+
+            BFW.Router.current = "casos";
+            BFW.Casos.editando = null;
+            BFW.Casos.seleccionar(origen.id);
+            return;
+
+        }
+
+        if(origen.modulo === "inmuebles" && typeof BFW.Inmuebles !== "undefined"){
+
+            BFW.Router.current = "inmuebles";
+            BFW.Inmuebles.editando = false;
+            BFW.Inmuebles.seleccionar(origen.id);
+            return;
+
+        }
+
+        BFW.Router.current = "documentos";
+        BFW.Documentos.view = "lista";
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.volver = function(){
+
+        const origen = BFW.Documentos.origen;
+
+        BFW.Documentos.view = "lista";
+        BFW.Documentos.editando = null;
+        BFW.Documentos.form = null;
+        BFW.Documentos.origen = null;
+
+        if(origen){
+
+            BFW.Documentos.volverAOrigen(origen);
+            return;
+
+        }
+
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.buscar = function(valor){
+
+        BFW.Documentos.filtro = valor;
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.filtrarTipo = function(tipo){
+
+        BFW.Documentos.filtroTipo = tipo;
+        BFW.App.render();
+
+    };
+
+    BFW.Documentos.guardar = function(id){
+
+        const form = BFW.Documentos.form;
+
+        const personaId = form.vinculo === "cliente" && document.getElementById("documento-personaId")
+            ? document.getElementById("documento-personaId").value : "";
+
+        const casoId = form.vinculo === "cliente" && document.getElementById("documento-casoId")
+            ? document.getElementById("documento-casoId").value : "";
+
+        const inmuebleId = form.vinculo === "cliente" && document.getElementById("documento-inmuebleId")
+            ? document.getElementById("documento-inmuebleId").value : "";
+
+        const empresaId = form.vinculo === "empresa" && document.getElementById("documento-empresaId")
+            ? document.getElementById("documento-empresaId").value
+            : form.vinculo === "proveedor" && document.getElementById("documento-proveedorId")
+                ? document.getElementById("documento-proveedorId").value : "";
+
+        if(form.vinculo === "cliente" && !personaId){
+
+            alert("Selecciona un cliente.");
+            return;
+
+        }
+
+        if((form.vinculo === "empresa" || form.vinculo === "proveedor") && !empresaId){
+
+            alert(form.vinculo === "proveedor" ? "Selecciona un proveedor." : "Selecciona una empresa.");
+            return;
+
+        }
+
+        function terminar(){
+
+            const origen = BFW.Documentos.origen;
+
+            BFW.Documentos.data = null;
+            BFW.Documentos.view = "lista";
+            BFW.Documentos.editando = null;
+            BFW.Documentos.form = null;
+            BFW.Documentos.origen = null;
+
+            BFW.Documentos.invalidarCachesRelacionadas();
+
+            if(origen){
+
+                BFW.Documentos.volverAOrigen(origen);
+                return;
+
+            }
+
+            BFW.App.render();
+
+        }
+
+        if(id){
+
+            const documento = {
+                id: id,
+                personaId: personaId,
+                empresaId: empresaId,
+                casoId: casoId,
+                inmuebleId: inmuebleId
+            };
+
+            BFW.API.updateDocumento(documento, terminar);
+            return;
+
+        }
+
+        const inputArchivo = document.getElementById("documento-archivo");
+        const archivo = inputArchivo ? inputArchivo.files[0] : null;
+
+        if(!archivo){
+
+            alert("Selecciona un archivo para subir.");
+            return;
+
+        }
+
+        if(archivo.size > 15 * 1024 * 1024){
+
+            alert("El archivo supera los 15MB. Sube un archivo más pequeño.");
+            return;
+
+        }
+
+        const tipoDetectado = form.tipoDetectado || "Otro";
+        let categoria = "Otro";
+
+        if(tipoDetectado === "Foto"){
+
+            const subtipoFotoEl = document.getElementById("documento-subtipo-foto");
+            categoria = subtipoFotoEl ? subtipoFotoEl.value : "Otro";
+
+        } else if(tipoDetectado === "PDF"){
+
+            const tipoPdfEl = document.getElementById("documento-tipo-pdf");
+            categoria = tipoPdfEl ? tipoPdfEl.value : "Otro";
+
+        }
+
+        const observacion = document.getElementById("documento-observacion").value.trim();
+
+        if(tipoDetectado === "Foto" && !observacion){
+
+            alert("Introduce una observación para la foto (por ejemplo: cámara jardín, cuadro eléctrico...).");
+            return;
+
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function(e){
+
+            const base64 = e.target.result.split(",")[1];
+
+            const documento = {
+                nombreOriginal: archivo.name,
+                mimeType: archivo.type || "application/octet-stream",
+                base64: base64,
+                categoria: categoria,
+                tipoDetectado: tipoDetectado,
+                observacion: observacion,
+                personaId: personaId,
+                empresaId: empresaId,
+                casoId: casoId,
+                inmuebleId: inmuebleId
+            };
+
+            const btn = document.getElementById("documento-btn-guardar");
+
+            if(btn){
+                btn.disabled = true;
+                btn.textContent = "Subiendo...";
+            }
+
+            BFW.API.insertDocumento(documento, terminar);
+
+        };
+
+        reader.readAsDataURL(archivo);
+
+    };
+
+    BFW.Documentos.eliminar = function(id){
+
+        BFW.UI.confirmar("¿Eliminar este documento? También se eliminará de Drive.", function(){
+
+            BFW.API.deleteDocumento(id, function(){
+
+                const origen = BFW.Documentos.origen;
+
+                BFW.Documentos.data = null;
+                BFW.Documentos.view = "lista";
+                BFW.Documentos.current = null;
+                BFW.Documentos.origen = null;
+
+                BFW.Documentos.invalidarCachesRelacionadas();
+
+                if(origen){
+
+                    BFW.Documentos.volverAOrigen(origen);
+                    return;
+
+                }
+
+                BFW.App.render();
+
+            });
+
+        });
+
+    };
+
+    /**
+     * Las fichas de Persona, Empresa, Caso e Inmueble guardan su propia
+     * copia de los documentos vinculados. Al crear/eliminar un documento
+     * hay que vaciarlas para que se recarguen con los datos al día.
+     */
+    BFW.Documentos.invalidarCachesRelacionadas = function(){
+
+        if(typeof BFW.Personas !== "undefined"){
+
+            BFW.Personas.documentos = null;
+
+        }
+
+        if(typeof BFW.Empresas !== "undefined"){
+
+            BFW.Empresas.documentos = null;
+
+        }
+
+        if(typeof BFW.Casos !== "undefined"){
+
+            BFW.Casos.documentos = null;
+
+        }
+
+        if(typeof BFW.Inmuebles !== "undefined"){
+
+            BFW.Inmuebles.documentos = null;
+
+        }
+
+    };
+
+</script>

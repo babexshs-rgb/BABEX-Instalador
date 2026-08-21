@@ -1,0 +1,729 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Casos.js
+    Versión : 0.1.0
+    ==================================================
+    */
+
+    BFW.Casos = {
+
+        data: null,
+        personas: null,
+        inmuebles: null,
+        config: null,
+        documentos: null,
+        filtro: "",
+        filtroEstado: "todos",
+        view: "lista",
+        editando: null,
+        current: null
+
+    };
+
+    BFW.Casos.TIPOS_POR_DEFECTO = ["Instalación","Mantenimiento","Incidencia","Presupuesto"];
+
+    /* ==================================================
+       CARGA DE DATOS
+    ================================================== */
+
+    BFW.Casos.cargarTodo = function(callback){
+
+        if(BFW.yaSeEstaCargando(BFW.Casos, callback)) return;
+
+        let pendientes = 5;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0){
+
+                BFW.cargaTerminada(BFW.Casos);
+
+                if(callback) callback();
+
+            }
+
+        }
+
+        BFW.API.getCasos(function(datos){
+
+            BFW.Casos.data = datos;
+            comprobar();
+
+        });
+
+        BFW.API.getPersonas(function(datos){
+
+            BFW.Casos.personas = datos;
+            comprobar();
+
+        });
+
+        BFW.API.getInmuebles(function(datos){
+
+            BFW.Casos.inmuebles = datos;
+            comprobar();
+
+        });
+
+        BFW.API.getConfig(function(datos){
+
+            BFW.Casos.config = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+        BFW.API.getDocumentos(function(datos){
+
+            BFW.Casos.documentos = Array.isArray(datos) ? datos : [];
+            comprobar();
+
+        });
+
+    };
+
+    BFW.Casos.documentosDe = function(casoId){
+
+        if(!BFW.Casos.documentos){
+            return [];
+        }
+
+        return BFW.Casos.documentos.filter(function(d){
+            return Number(d.casoId) === Number(casoId);
+        });
+
+    };
+
+    BFW.Casos.cargarDocumentos = function(callback){
+
+        if(BFW.Casos.documentos !== null){
+
+            callback();
+            return;
+
+        }
+
+        BFW.API.getDocumentos(function(datos){
+
+            BFW.Casos.documentos = Array.isArray(datos) ? datos : [];
+            callback();
+
+        });
+
+    };
+
+    /**
+     * Tipos de caso disponibles: los de Administración (clave CASOS_TIPOS)
+     * si existen, si no los de siempre.
+     */
+    BFW.Casos.tiposDisponibles = function(){
+
+        return BFW.Config.obtenerLista(BFW.Casos.config, "CASOS_TIPOS", BFW.Casos.TIPOS_POR_DEFECTO);
+
+    };
+
+    /* ==================================================
+       HELPERS
+    ================================================== */
+
+    BFW.Casos.nombrePersona = function(id){
+
+        if(!id || !BFW.Casos.personas) return "Sin cliente";
+
+        const persona = BFW.Casos.personas.find(function(p){ return Number(p.id) === Number(id); });
+
+        return persona ? (persona.nombre + " " + (persona.apellidos || "")).trim() : "Cliente no encontrado";
+
+    };
+
+    BFW.Casos.direccionInmueble = function(id){
+
+        if(!id || !BFW.Casos.inmuebles) return null;
+
+        const inmueble = BFW.Casos.inmuebles.find(function(i){ return Number(i.id) === Number(id); });
+
+        return inmueble ? inmueble.direccion : null;
+
+    };
+
+    /* ==================================================
+       RENDER PRINCIPAL
+    ================================================== */
+
+    BFW.Casos.render = function(){
+
+        if(BFW.Casos.data === null || BFW.Casos.personas === null || BFW.Casos.inmuebles === null || BFW.Casos.config === null || BFW.Casos.documentos === null){
+
+            BFW.Casos.cargarTodo(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="casos-empty"><p>Cargando casos...</p></div>';
+
+        }
+
+        switch(BFW.Casos.view){
+
+            case "detalle":
+                return BFW.Casos.renderDetalle();
+
+            case "formulario":
+                return BFW.Casos.renderFormularioBase(BFW.Casos.editando);
+
+            case "lista":
+            default:
+                return BFW.Casos.renderLista();
+
+        }
+
+    };
+
+    /* ==================================================
+       LISTA
+    ================================================== */
+
+    BFW.Casos.renderLista = function(){
+
+        const filtro = (BFW.Casos.filtro || "").toLowerCase();
+        const filtroEstado = BFW.Casos.filtroEstado || "todos";
+
+        let lista = BFW.Casos.data.filter(function(c){
+
+            const coincideTexto = filtro === "" ||
+                (c.descripcion || "").toLowerCase().indexOf(filtro) !== -1 ||
+                BFW.Casos.nombrePersona(c.personaId).toLowerCase().indexOf(filtro) !== -1;
+
+            const coincideEstado = filtroEstado === "todos" ||
+                (c.estado || "").toLowerCase() === filtroEstado;
+
+            return coincideTexto && coincideEstado;
+
+        });
+
+        const iconos = {
+            "Instalación": "🔧",
+            "Mantenimiento": "🛠️",
+            "Incidencia": "⚠️",
+            "Presupuesto": "📋"
+        };
+
+        const badgeEstado = {
+            "Abierto": "babex-badge-danger",
+            "En proceso": "babex-badge-warning",
+            "Cerrado": "babex-badge-success"
+        };
+
+        let filas = lista.map(function(c){
+
+            const icono = iconos[c.tipo] || "📁";
+            const badgeClass = badgeEstado[c.estado] || "babex-badge-warning";
+
+            return `
+
+                <div class="caso-list-card" onclick="BFW.Casos.seleccionar(${c.id})">
+
+                    <div class="caso-list-icon">${icono}</div>
+
+                    <div class="caso-list-info">
+
+                        <div class="caso-list-title">${c.tipo || "Caso"} — ${BFW.Casos.nombrePersona(c.personaId)}</div>
+
+                        <div class="caso-list-sub">${c.descripcion || "Sin descripción"}</div>
+
+                    </div>
+
+                    <div class="babex-badge ${badgeClass}">${c.estado}</div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        if(lista.length === 0){
+
+            filas = '<div class="casos-empty"><p>No se han encontrado casos.</p></div>';
+
+        }
+
+        return `
+
+        <div class="casos-panel">
+
+            <div class="casos-header-panel">
+
+                <div class="casos-header">
+
+                    <div>
+                        <div class="babex-overline">Servicio</div>
+                        <h2>Casos</h2>
+                    </div>
+
+                    <button class="babex-btn-primary" onclick="BFW.Casos.nuevo()">+ Nuevo caso</button>
+
+                </div>
+
+                <div class="casos-toolbar">
+
+                    <div class="casos-search">
+
+                        <span class="casos-search-icon">🔍</span>
+
+                        <input id="txtBuscarCaso" class="babex-input" type="text" placeholder="Buscar por cliente o descripción..."
+                            value="${BFW.Casos.filtro || ""}"
+                            oninput="BFW.Casos.buscar(this.value)">
+
+                    </div>
+
+                </div>
+
+                <div class="casos-filtros">
+
+                    <div class="caso-chip caso-chip-todos ${filtroEstado=="todos"?"activo":""}" onclick="BFW.Casos.filtrarEstado('todos')">Todos</div>
+                    <div class="caso-chip caso-chip-abierto ${filtroEstado=="abierto"?"activo":""}" onclick="BFW.Casos.filtrarEstado('abierto')">Abierto</div>
+                    <div class="caso-chip caso-chip-proceso ${filtroEstado=="en proceso"?"activo":""}" onclick="BFW.Casos.filtrarEstado('en proceso')">En proceso</div>
+                    <div class="caso-chip caso-chip-cerrado ${filtroEstado=="cerrado"?"activo":""}" onclick="BFW.Casos.filtrarEstado('cerrado')">Cerrado</div>
+
+                </div>
+
+            </div>
+
+            <div class="casos-list">
+
+                ${filas}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       DETALLE
+    ================================================== */
+
+    BFW.Casos.renderDetalle = function(){
+
+        const c = BFW.Casos.current;
+
+        if(!c) return BFW.Casos.renderLista();
+
+        const badgeEstado = {
+            "Abierto": "babex-badge-danger",
+            "En proceso": "babex-badge-warning",
+            "Cerrado": "babex-badge-success"
+        };
+
+        const badgeClass = badgeEstado[c.estado] || "babex-badge-warning";
+        const direccion = BFW.Casos.direccionInmueble(c.inmuebleId);
+
+        return `
+
+        <div class="caso-detail">
+
+            <div class="caso-top">
+
+                <div class="caso-identidad">
+
+                    <div class="caso-avatar-lg">📁</div>
+
+                    <div>
+
+                        <h1 class="caso-title">${c.tipo || "Caso"}</h1>
+
+                        <div class="caso-subtitle">
+                            <span class="babex-badge ${badgeClass}">${c.estado}</span>
+                            <span>· ${BFW.Casos.nombrePersona(c.personaId)}</span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display:flex; gap:10px;">
+
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-primary" onclick="BFW.Casos.editar(${c.id})">Editar</button>` : ""}
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-danger" onclick="BFW.Casos.eliminar(${c.id})">Eliminar</button>` : ""}
+                    <button class="babex-btn-secondary" onclick="BFW.Casos.volver()">Volver</button>
+
+                </div>
+
+            </div>
+
+            <div class="caso-form-grid">
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Detalle</div>
+                    <h3>Información del caso</h3>
+
+                    <div class="caso-detail-row">
+                        <span class="babex-overline">Cliente</span>
+                        <span>${BFW.Casos.nombrePersona(c.personaId)}</span>
+                    </div>
+
+                    <div class="caso-detail-row">
+                        <span class="babex-overline">Inmueble</span>
+                        <span>${direccion || "Sin vincular"}</span>
+                    </div>
+
+                    <div class="caso-detail-row">
+                        <span class="babex-overline">Fecha apertura</span>
+                        <span>${BFW.formatearFecha(c.fechaApertura)}</span>
+                    </div>
+
+                    <div class="caso-detail-row">
+                        <span class="babex-overline">Fecha cierre</span>
+                        <span>${BFW.formatearFecha(c.fechaCierre)}</span>
+                    </div>
+
+                </div>
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Descripción</div>
+                    <h3>Notas del caso</h3>
+
+                    <div class="caso-observaciones">${c.descripcion || "Sin descripción."}</div>
+
+                </div>
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Archivo</div>
+                    <h3>Documentos</h3>
+
+                    ${BFW.Documentos.renderMiniLista(BFW.Casos.documentosDe(c.id), {modulo:'casos', id:c.id})}
+
+                    <button class="babex-btn-secondary" style="margin-top:14px; width:100%;" onclick="BFW.Documentos.nuevoDesde({vinculo:'cliente', personaId:${c.personaId}, casoId:${c.id}}, {modulo:'casos', id:${c.id}})">+ Añadir documento</button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       FORMULARIO (crear / editar)
+    ================================================== */
+
+    BFW.Casos.renderFormularioBase = function(caso){
+
+        const c = caso || {
+            id: null,
+            personaId: "",
+            inmuebleId: "",
+            estado: "Abierto",
+            tipo: "Instalación",
+            descripcion: "",
+            fechaApertura: BFW.hoyISO(),
+            fechaCierre: ""
+        };
+
+        const opcionesPersonas = BFW.Casos.personas.map(function(p){
+
+            const nombre = (p.nombre + " " + (p.apellidos || "")).trim();
+            const seleccionado = Number(p.id) === Number(c.personaId) ? "selected" : "";
+            return `<option value="${p.id}" ${seleccionado}>${nombre}</option>`;
+
+        }).join("");
+
+        const opcionesTipo = BFW.Casos.tiposDisponibles().map(function(t){
+
+            return `<option ${c.tipo==t?"selected":""}>${t}</option>`;
+
+        }).join("");
+
+        const inmueblesDelCliente = BFW.Casos.inmuebles.filter(function(i){
+
+            return Number(i.personaId) === Number(c.personaId);
+
+        });
+
+        const opcionesInmuebles = inmueblesDelCliente.map(function(i){
+
+            const seleccionado = Number(i.id) === Number(c.inmuebleId) ? "selected" : "";
+            return `<option value="${i.id}" ${seleccionado}>${i.direccion}</option>`;
+
+        }).join("");
+
+        return `
+
+        <div class="caso-form-wrapper">
+
+            <div class="caso-editor-header">
+
+                <h2>${c.id ? "Editar caso" : "Nuevo caso"}</h2>
+
+            </div>
+
+            <div class="babex-card caso-form-section">
+
+                <h3>Datos del caso</h3>
+
+                <div class="caso-form-grid">
+
+                    <div class="caso-campo">
+                        <label>Cliente</label>
+                        <select id="caso-personaId" class="babex-input" onchange="BFW.Casos.actualizarInmuebles(this.value)">
+                            <option value="">Selecciona un cliente</option>
+                            ${opcionesPersonas}
+                        </select>
+                    </div>
+
+                    <div class="caso-campo">
+                        <label>Inmueble (opcional)</label>
+                        <select id="caso-inmuebleId" class="babex-input">
+                            <option value="">Sin vincular</option>
+                            ${opcionesInmuebles}
+                        </select>
+                    </div>
+
+                    <div class="caso-campo">
+                        <label>Tipo</label>
+                        <select id="caso-tipo" class="babex-input">
+                            ${opcionesTipo}
+                        </select>
+                    </div>
+
+                    <div class="caso-campo">
+                        <label>Estado</label>
+                        <select id="caso-estado" class="babex-input">
+                            <option ${c.estado=="Abierto"?"selected":""}>Abierto</option>
+                            <option ${c.estado=="En proceso"?"selected":""}>En proceso</option>
+                            <option ${c.estado=="Cerrado"?"selected":""}>Cerrado</option>
+                        </select>
+                    </div>
+
+                    <div class="caso-campo">
+                        <label>Fecha apertura</label>
+                        <input id="caso-fechaApertura" class="babex-input" type="date" value="${c.fechaApertura || ""}">
+                    </div>
+
+                    <div class="caso-campo">
+                        <label>Fecha cierre</label>
+                        <input id="caso-fechaCierre" class="babex-input" type="date" value="${c.fechaCierre || ""}">
+                    </div>
+
+                </div>
+
+                <div class="caso-campo" style="margin-top:16px;">
+                    <label>Descripción *</label>
+                    <textarea id="caso-descripcion" class="babex-input caso-descripcion-input">${c.descripcion || ""}</textarea>
+                </div>
+
+            </div>
+
+            <div class="caso-form-footer">
+
+                <div class="caso-form-buttons">
+                    <button class="babex-btn-secondary" onclick="BFW.Casos.volver()">Cancelar</button>
+                    <button class="babex-btn-primary" onclick="BFW.Casos.guardar(${c.id || "null"})">Guardar</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    BFW.Casos.actualizarInmuebles = function(personaId){
+
+        const select = document.getElementById("caso-inmuebleId");
+
+        const inmueblesDelCliente = BFW.Casos.inmuebles.filter(function(i){
+
+            return Number(i.personaId) === Number(personaId);
+
+        });
+
+        let opciones = '<option value="">Sin vincular</option>';
+
+        opciones += inmueblesDelCliente.map(function(i){
+
+            return `<option value="${i.id}">${i.direccion}</option>`;
+
+        }).join("");
+
+        select.innerHTML = opciones;
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    /**
+     * Abre el formulario de caso nuevo.
+     *
+     * Admite un preset (por ejemplo { personaId: 12 }) para llegar con
+     * el cliente ya elegido desde su ficha. Como no lleva id, el
+     * formulario lo trata igual que uno nuevo: el título sigue siendo
+     * "Nuevo caso" y al guardar se crea, no se actualiza.
+     */
+    BFW.Casos.nuevo = function(preset){
+
+        BFW.Casos.editando = preset || null;
+        BFW.Casos.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Casos.editar = function(id){
+
+        const caso = BFW.Casos.data.find(function(c){ return Number(c.id) === Number(id); });
+
+        BFW.Casos.editando = caso || null;
+        BFW.Casos.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Casos.seleccionar = function(id){
+
+        const caso = BFW.Casos.data.find(function(c){ return Number(c.id) === Number(id); });
+
+        BFW.Casos.current = caso || null;
+        BFW.Casos.view = "detalle";
+
+        BFW.Casos.cargarDocumentos(function(){
+
+            BFW.App.render();
+
+        });
+
+    };
+
+    BFW.Casos.volver = function(){
+
+        BFW.Casos.view = "lista";
+        BFW.Casos.editando = null;
+
+        // Si se llegó aquí desde un acceso directo de otra pantalla
+        // (por ejemplo "Nuevo Caso" en el panel), se regresa a ella.
+        if(BFW.Router.regresar()) return;
+
+        BFW.App.render();
+
+    };
+
+    BFW.Casos.buscar = function(valor){
+
+        BFW.Casos.filtro = valor;
+        BFW.App.render();
+
+    };
+
+    BFW.Casos.filtrarEstado = function(estado){
+
+        BFW.Casos.filtroEstado = estado;
+        BFW.App.render();
+
+    };
+
+    BFW.Casos.guardar = function(id){
+
+        const caso = {
+            id: id || null,
+            personaId: document.getElementById("caso-personaId").value,
+            inmuebleId: document.getElementById("caso-inmuebleId").value,
+            tipo: document.getElementById("caso-tipo").value,
+            estado: document.getElementById("caso-estado").value,
+            fechaApertura: document.getElementById("caso-fechaApertura").value,
+            fechaCierre: document.getElementById("caso-fechaCierre").value,
+            descripcion: document.getElementById("caso-descripcion").value.trim()
+        };
+
+        if(!caso.personaId){
+
+            alert("Selecciona un cliente.");
+            return;
+
+        }
+
+        if(!caso.descripcion){
+
+            alert("Introduce una descripción del caso.");
+            return;
+
+        }
+
+        function terminar(){
+
+            BFW.Casos.data = null;
+            BFW.Casos.view = "lista";
+            BFW.Casos.editando = null;
+
+            if(typeof BFW.Personas !== "undefined"){
+
+                BFW.Personas.casos = null;
+
+            }
+
+            if(typeof BFW.Dashboard !== "undefined"){
+
+                BFW.Dashboard.casos = null;
+
+            }
+
+            BFW.App.render();
+
+        }
+
+        if(caso.id){
+
+            BFW.API.updateCaso(caso, terminar);
+
+        } else {
+
+            BFW.API.insertCaso(caso, terminar);
+
+        }
+
+    };
+
+    BFW.Casos.eliminar = function(id){
+
+        BFW.UI.confirmar("¿Eliminar este caso?", function(){
+
+            BFW.API.deleteCaso(id, function(){
+
+                BFW.Casos.data = null;
+                BFW.Casos.view = "lista";
+                BFW.Casos.current = null;
+
+                if(typeof BFW.Personas !== "undefined"){
+
+                    BFW.Personas.casos = null;
+
+                }
+
+                if(typeof BFW.Dashboard !== "undefined"){
+
+                    BFW.Dashboard.casos = null;
+
+                }
+
+                BFW.App.render();
+
+            });
+
+        });
+
+    };
+
+</script>

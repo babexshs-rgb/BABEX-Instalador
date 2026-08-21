@@ -1,0 +1,844 @@
+<script>
+/*
+==================================================
+BABEX Framework
+Archivo : BFW.UI.js
+Versión : 0.4.0
+==================================================
+*/
+BFW.UI = {};
+/*==================================================
+TOAST
+Avisos propios, apilados arriba a la derecha, que se van solos.
+Sustituyen a los alert() del navegador: no bloquean la página y
+encajan con el diseño de BABEX.
+Se crean por JS (elemento y estilos), así que no hace falta tocar
+ningún archivo CSS ni Index.html.
+==================================================*/
+BFW.UI._TOAST_DURACION_MS = 4000;
+BFW.UI._contenedorToasts = function(){
+
+    let cont = document.getElementById("babex-toasts");
+
+    if(cont) return cont;
+
+    cont = document.createElement("div");
+    cont.id = "babex-toasts";
+    cont.style.position = "fixed";
+    // Por debajo de la cabecera, para no taparle el avatar ni el
+    // botón de salir al usuario.
+    cont.style.top = "calc(var(--header-height, 64px) + 16px)";
+    cont.style.right = "16px";
+    cont.style.zIndex = "1000000";
+    cont.style.display = "flex";
+    cont.style.flexDirection = "column";
+    cont.style.gap = "10px";
+    cont.style.maxWidth = "min(380px, calc(100vw - 32px))";
+    cont.style.pointerEvents = "none";
+
+    if(!document.getElementById("babex-toasts-keyframes")){
+
+        const estilo = document.createElement("style");
+        estilo.id = "babex-toasts-keyframes";
+        estilo.textContent =
+            "@keyframes babex-toast-entra{" +
+            "from{ opacity:0; transform:translateX(24px); }" +
+            "to{ opacity:1; transform:translateX(0); }" +
+            "}" +
+            "@keyframes babex-toast-sale{" +
+            "from{ opacity:1; transform:translateX(0); }" +
+            "to{ opacity:0; transform:translateX(24px); }" +
+            "}";
+        document.head.appendChild(estilo);
+
+    }
+
+    document.body.appendChild(cont);
+
+    return cont;
+
+};
+/**
+ * tipo: "info" | "success" | "error" | "warning"
+ */
+BFW.UI.toast = function(mensaje, tipo){
+
+    if(!mensaje) return;
+
+    const cont = BFW.UI._contenedorToasts();
+
+    const colores = {
+        info:    { borde: "#3b82f6", icono: "i"  },
+        success: { borde: "#22c55e", icono: "✓"  },
+        error:   { borde: "#ef4444", icono: "!"  },
+        warning: { borde: "#f59e0b", icono: "!"  }
+    };
+
+    const conf = colores[tipo] || colores.info;
+
+    const toast = document.createElement("div");
+    toast.style.display = "flex";
+    toast.style.alignItems = "flex-start";
+    toast.style.gap = "10px";
+    toast.style.padding = "12px 14px";
+    toast.style.borderRadius = "10px";
+    toast.style.background = "var(--color-surface, #1a2233)";
+    toast.style.border = "1px solid var(--color-border, #2b3448)";
+    toast.style.borderLeft = "4px solid " + conf.borde;
+    toast.style.boxShadow = "0 10px 30px rgba(0,0,0,.35)";
+    toast.style.color = "var(--color-text-primary, #e8edf7)";
+    toast.style.fontSize = "13px";
+    toast.style.lineHeight = "1.45";
+    toast.style.cursor = "pointer";
+    toast.style.pointerEvents = "auto";
+    toast.style.animation = "babex-toast-entra .18s ease-out";
+
+    const icono = document.createElement("span");
+    icono.textContent = conf.icono;
+    icono.style.flexShrink = "0";
+    icono.style.width = "18px";
+    icono.style.height = "18px";
+    icono.style.borderRadius = "50%";
+    icono.style.background = conf.borde;
+    icono.style.color = "#ffffff";
+    icono.style.display = "flex";
+    icono.style.alignItems = "center";
+    icono.style.justifyContent = "center";
+    icono.style.fontSize = "11px";
+    icono.style.fontWeight = "700";
+    icono.style.marginTop = "1px";
+
+    const texto = document.createElement("div");
+    texto.textContent = mensaje;
+    texto.style.flex = "1";
+
+    toast.appendChild(icono);
+    toast.appendChild(texto);
+    cont.appendChild(toast);
+
+    let cerrado = false;
+
+    function cerrar(){
+
+        if(cerrado) return;
+        cerrado = true;
+
+        toast.style.animation = "babex-toast-sale .18s ease-in forwards";
+
+        setTimeout(function(){
+            if(toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 180);
+
+    }
+
+    // Se cierra solo, o al hacer clic si molesta.
+    toast.onclick = cerrar;
+    setTimeout(cerrar, BFW.UI._TOAST_DURACION_MS);
+
+};
+BFW.UI.notify = function(mensaje){
+    BFW.UI.toast(mensaje, "info");
+};
+/*==================================================
+ERROR
+==================================================*/
+BFW.UI.error = function(mensaje){
+    BFW.UI.toast(mensaje, "error");
+};
+/*==================================================
+SUCCESS
+==================================================*/
+BFW.UI.success = function(mensaje){
+    BFW.UI.toast(mensaje, "success");
+};
+/*==================================================
+INFO
+==================================================*/
+BFW.UI.info = function(mensaje){
+    BFW.UI.toast(mensaje, "info");
+};
+/*==================================================
+CONFIRM
+Diálogo propio de confirmación. A diferencia del confirm() del
+navegador no puede devolver la respuesta al momento (el código no se
+detiene a esperar), así que trabaja con un callback:
+
+    BFW.UI.confirmar("¿Eliminar esto?", function(){
+        // ... solo se ejecuta si el usuario acepta
+    });
+
+Se puede cancelar con Escape o haciendo clic fuera del recuadro, y
+acepta con Enter.
+==================================================*/
+BFW.UI.confirmar = function(mensaje, alConfirmar, opciones){
+
+    const config = opciones || {};
+    const textoAceptar = config.aceptar || "Eliminar";
+    const textoCancelar = config.cancelar || "Cancelar";
+    const peligroso = config.peligroso !== false; // por defecto, rojo
+
+    const fondo = document.createElement("div");
+    fondo.style.position = "fixed";
+    fondo.style.inset = "0";
+    fondo.style.background = "rgba(0,0,0,.55)";
+    fondo.style.zIndex = "1000001";
+    fondo.style.display = "flex";
+    fondo.style.alignItems = "center";
+    fondo.style.justifyContent = "center";
+    fondo.style.padding = "20px";
+
+    const caja = document.createElement("div");
+    caja.style.width = "100%";
+    caja.style.maxWidth = "420px";
+    caja.style.background = "var(--color-surface, #1a2233)";
+    caja.style.border = "1px solid var(--color-border, #2b3448)";
+    caja.style.borderRadius = "14px";
+    caja.style.padding = "24px";
+    caja.style.boxShadow = "0 24px 60px rgba(0,0,0,.5)";
+    caja.style.color = "var(--color-text-primary, #e8edf7)";
+
+    const texto = document.createElement("p");
+    texto.textContent = mensaje;
+    texto.style.margin = "0 0 22px";
+    texto.style.fontSize = "15px";
+    texto.style.lineHeight = "1.5";
+
+    const botones = document.createElement("div");
+    botones.style.display = "flex";
+    botones.style.justifyContent = "flex-end";
+    botones.style.gap = "10px";
+
+    const btnCancelar = document.createElement("button");
+    btnCancelar.className = "babex-btn-secondary";
+    btnCancelar.textContent = textoCancelar;
+
+    const btnAceptar = document.createElement("button");
+    btnAceptar.className = peligroso ? "babex-btn-danger" : "babex-btn-primary";
+    btnAceptar.textContent = textoAceptar;
+
+    botones.appendChild(btnCancelar);
+    botones.appendChild(btnAceptar);
+    caja.appendChild(texto);
+    caja.appendChild(botones);
+    fondo.appendChild(caja);
+    document.body.appendChild(fondo);
+
+    function cerrar(){
+
+        document.removeEventListener("keydown", alPulsarTecla);
+
+        if(fondo.parentNode) fondo.parentNode.removeChild(fondo);
+
+    }
+
+    function aceptar(){
+
+        cerrar();
+
+        if(typeof alConfirmar === "function") alConfirmar();
+
+    }
+
+    function alPulsarTecla(e){
+
+        if(e.key === "Escape") cerrar();
+        if(e.key === "Enter") aceptar();
+
+    }
+
+    btnCancelar.onclick = cerrar;
+    btnAceptar.onclick = aceptar;
+
+    // Clic fuera del recuadro: cancela.
+    fondo.onclick = function(e){ if(e.target === fondo) cerrar(); };
+
+    document.addEventListener("keydown", alPulsarTecla);
+
+    btnAceptar.focus();
+
+};
+/**
+ * Se mantiene por compatibilidad con el código que todavía espera una
+ * respuesta inmediata. Usa BFW.UI.confirmar() en lo nuevo.
+ */
+BFW.UI.confirm = function(mensaje){
+    return confirm(mensaje);
+};
+/*==================================================
+PEDIR DATOS
+Sustituto propio de los prompt() del navegador, para cuando hay que
+pedir uno o varios datos seguidos.
+
+    BFW.UI.pedir({
+        titulo: "Cambiar contraseña",
+        campos: [
+            { id:"actual", etiqueta:"Contraseña actual", tipo:"password" },
+            { id:"nueva",  etiqueta:"Nueva contraseña",  tipo:"password" }
+        ],
+        aceptar: "Guardar"
+    }, function(valores, mostrarError, cerrar){
+        // Si algo no cuadra: mostrarError("...") y el diálogo sigue abierto.
+        // Si todo va bien: cerrar()
+    });
+
+==================================================*/
+BFW.UI.pedir = function(opciones, alAceptar){
+
+    const config = opciones || {};
+    const campos = config.campos || [];
+
+    const fondo = document.createElement("div");
+    fondo.style.position = "fixed";
+    fondo.style.inset = "0";
+    fondo.style.background = "rgba(0,0,0,.55)";
+    fondo.style.zIndex = "1000001";
+    fondo.style.display = "flex";
+    fondo.style.alignItems = "center";
+    fondo.style.justifyContent = "center";
+    fondo.style.padding = "20px";
+
+    const caja = document.createElement("div");
+    caja.style.width = "100%";
+    caja.style.maxWidth = "420px";
+    caja.style.background = "var(--color-surface, #1a2233)";
+    caja.style.border = "1px solid var(--color-border, #2b3448)";
+    caja.style.borderRadius = "14px";
+    caja.style.padding = "24px";
+    caja.style.boxShadow = "0 24px 60px rgba(0,0,0,.5)";
+    caja.style.color = "var(--color-text-primary, #e8edf7)";
+
+    const titulo = document.createElement("h3");
+    titulo.textContent = config.titulo || "";
+    titulo.style.margin = "0 0 6px";
+    titulo.style.fontSize = "18px";
+
+    caja.appendChild(titulo);
+
+    if(config.texto){
+
+        const sub = document.createElement("p");
+        sub.textContent = config.texto;
+        sub.style.margin = "0 0 16px";
+        sub.style.fontSize = "13px";
+        sub.style.color = "var(--color-text-muted, #93a0b8)";
+
+        caja.appendChild(sub);
+
+    }
+
+    const aviso = document.createElement("div");
+    aviso.className = "auth-error";
+    aviso.style.display = "none";
+    aviso.style.margin = "0 0 14px";
+
+    caja.appendChild(aviso);
+
+    const entradas = {};
+
+    campos.forEach(function(campo){
+
+        const grupo = document.createElement("div");
+        grupo.style.marginBottom = "14px";
+
+        const etiqueta = document.createElement("label");
+        etiqueta.textContent = campo.etiqueta || "";
+        etiqueta.style.display = "block";
+        etiqueta.style.marginBottom = "4px";
+        etiqueta.style.fontSize = "12px";
+        etiqueta.style.fontWeight = "700";
+        etiqueta.style.color = "var(--color-text-secondary, #b6c1d6)";
+
+        let entrada;
+
+        if(campo.tipo === "select"){
+
+            // Desplegable: campo.opciones puede ser una lista de textos
+            // o de objetos { valor, texto }.
+            entrada = document.createElement("select");
+            entrada.className = "babex-input";
+
+            (campo.opciones || []).forEach(function(op){
+
+                const opcion = document.createElement("option");
+
+                if(typeof op === "string"){
+
+                    opcion.value = op;
+                    opcion.textContent = op;
+
+                } else {
+
+                    opcion.value = op.valor;
+                    opcion.textContent = op.texto;
+
+                }
+
+                if(campo.valor !== undefined && String(campo.valor) === String(opcion.value)){
+                    opcion.selected = true;
+                }
+
+                entrada.appendChild(opcion);
+
+            });
+
+        } else if(campo.tipo === "textarea"){
+
+            entrada = document.createElement("textarea");
+            entrada.className = "babex-input";
+            entrada.placeholder = campo.placeholder || "";
+            entrada.style.minHeight = "100px";
+            entrada.value = campo.valor || "";
+
+        } else {
+
+            entrada = document.createElement("input");
+            entrada.type = campo.tipo || "text";
+            entrada.className = "babex-input";
+            entrada.placeholder = campo.placeholder || "";
+            entrada.value = campo.valor || "";
+
+            entrada.onkeypress = function(e){
+                if(e.key === "Enter") aceptar();
+            };
+
+        }
+
+        entrada.style.width = "100%";
+
+        entradas[campo.id] = entrada;
+
+        grupo.appendChild(etiqueta);
+        grupo.appendChild(entrada);
+        caja.appendChild(grupo);
+
+    });
+
+    const botones = document.createElement("div");
+    botones.style.display = "flex";
+    botones.style.justifyContent = "flex-end";
+    botones.style.gap = "10px";
+    botones.style.marginTop = "20px";
+
+    const btnCancelar = document.createElement("button");
+    btnCancelar.className = "babex-btn-secondary";
+    btnCancelar.textContent = config.cancelar || "Cancelar";
+
+    const btnAceptar = document.createElement("button");
+    btnAceptar.className = "babex-btn-primary";
+    btnAceptar.textContent = config.aceptar || "Aceptar";
+
+    botones.appendChild(btnCancelar);
+    botones.appendChild(btnAceptar);
+    caja.appendChild(botones);
+    fondo.appendChild(caja);
+    document.body.appendChild(fondo);
+
+    function cerrar(){
+
+        document.removeEventListener("keydown", alPulsarTecla);
+
+        if(fondo.parentNode) fondo.parentNode.removeChild(fondo);
+
+    }
+
+    function mostrarError(mensaje){
+
+        aviso.textContent = mensaje;
+        aviso.style.display = mensaje ? "block" : "none";
+
+    }
+
+    function aceptar(){
+
+        const valores = {};
+
+        Object.keys(entradas).forEach(function(id){
+            valores[id] = entradas[id].value;
+        });
+
+        mostrarError("");
+
+        if(typeof alAceptar === "function"){
+
+            alAceptar(valores, mostrarError, cerrar);
+
+        } else {
+
+            cerrar();
+
+        }
+
+    }
+
+    function alPulsarTecla(e){
+
+        if(e.key === "Escape") cerrar();
+
+    }
+
+    btnCancelar.onclick = cerrar;
+    btnAceptar.onclick = aceptar;
+
+    fondo.onclick = function(e){ if(e.target === fondo) cerrar(); };
+
+    document.addEventListener("keydown", alPulsarTecla);
+
+    if(campos.length && entradas[campos[0].id]){
+        entradas[campos[0].id].focus();
+    }
+
+};
+/*==================================================
+REDIRECCIÓN DE alert()
+Los módulos llaman a alert() en decenas de sitios. En vez de tocarlos
+todos uno a uno (con el riesgo que eso tiene), se redirige alert() a
+los avisos nuevos y se deduce el tipo por el texto del mensaje.
+El alert() original queda guardado en BFW.UI.alertNativo por si
+alguna vez hace falta el bloqueante de verdad.
+==================================================*/
+BFW.UI.alertNativo = window.alert;
+BFW.UI._tipoSegunTexto = function(mensaje){
+
+    const texto = String(mensaje || "").toLowerCase();
+
+    if(texto.indexOf("error") !== -1 ||
+       texto.indexOf("no se ha podido") !== -1 ||
+       texto.indexOf("no se han podido") !== -1 ||
+       texto.indexOf("no tienes permisos") !== -1 ||
+       texto.indexOf("incorrect") !== -1){
+
+        return "error";
+
+    }
+
+    if(texto.indexOf("introduce") !== -1 ||
+       texto.indexOf("debe ") !== -1 ||
+       texto.indexOf("ya existe") !== -1 ||
+       texto.indexOf("ya está") !== -1 ||
+       texto.indexOf("no coinciden") !== -1 ||
+       texto.indexOf("escribe ") !== -1){
+
+        return "warning";
+
+    }
+
+    if(texto.indexOf("actualizad") !== -1 ||
+       texto.indexOf("guardad") !== -1 ||
+       texto.indexOf("correctamente") !== -1){
+
+        return "success";
+
+    }
+
+    return "info";
+
+};
+window.alert = function(mensaje){
+
+    BFW.UI.toast(mensaje, BFW.UI._tipoSegunTexto(mensaje));
+
+};
+/*==================================================
+LOADING
+Barra fina de progreso, fija arriba del todo, que se muestra
+mientras hay peticiones al servidor en curso. Cuenta cuántas
+llamadas están abiertas a la vez (varias pantallas piden datos en
+paralelo), así que solo se oculta cuando la última termina.
+Autocontenida: crea su propio elemento y estilos por JS, no
+depende de tocar Index.html ni los CSS del proyecto.
+==================================================*/
+BFW.UI._cargasActivas = 0;
+BFW.UI._barraMostradaDesde = 0;
+BFW.UI._TIEMPO_MINIMO_MS = 400; // para que no sea un parpadeo imperceptible en cargas muy rápidas
+BFW.UI._TIEMPO_MAXIMO_CARGA_MS = 20000; // tope de seguridad: pasado esto se da la carga por terminada
+BFW.UI._crearBarraCarga = function(){
+
+    if(document.getElementById("babex-loading-bar")){
+        return document.getElementById("babex-loading-bar");
+    }
+
+    const barra = document.createElement("div");
+    barra.id = "babex-loading-bar";
+    barra.style.position = "fixed";
+    barra.style.top = "0";
+    barra.style.left = "0";
+    barra.style.height = "5px";
+    barra.style.width = "100%";
+    barra.style.zIndex = "999999";
+    barra.style.background = "rgba(59,130,246,0.2)";
+    barra.style.opacity = "0";
+    barra.style.transition = "opacity .15s ease";
+    barra.style.pointerEvents = "none";
+
+    const relleno = document.createElement("div");
+    relleno.id = "babex-loading-bar-relleno";
+    relleno.style.height = "100%";
+    relleno.style.width = "40%";
+    relleno.style.background = "#3b82f6";
+    relleno.style.boxShadow = "0 0 8px 1px rgba(59,130,246,0.9)";
+    relleno.style.animation = "babex-loading-bar-anim 1s ease-in-out infinite";
+
+    if(!document.getElementById("babex-loading-bar-keyframes")){
+
+        const estilo = document.createElement("style");
+        estilo.id = "babex-loading-bar-keyframes";
+        estilo.textContent =
+            "@keyframes babex-loading-bar-anim{" +
+            "0%{margin-left:-40%;}" +
+            "100%{margin-left:100%;}" +
+            "}";
+        document.head.appendChild(estilo);
+
+    }
+
+    barra.appendChild(relleno);
+    document.body.appendChild(barra);
+
+    return barra;
+
+};
+BFW.UI.loading = function(mostrar){
+
+    const barra = BFW.UI._crearBarraCarga();
+
+    if(mostrar === false){
+
+        BFW.UI._cargasActivas = Math.max(0, BFW.UI._cargasActivas - 1);
+
+        if(BFW.UI._cargasActivas > 0){
+            return;
+        }
+
+        // Aunque ya no queden cargas activas, mantenemos la barra
+        // visible un mínimo de tiempo si acaba de aparecer, para que
+        // en cargas muy rápidas no sea un parpadeo imposible de ver.
+        const transcurrido = Date.now() - BFW.UI._barraMostradaDesde;
+        const restante = BFW.UI._TIEMPO_MINIMO_MS - transcurrido;
+
+        if(restante > 0){
+
+            setTimeout(function(){
+                if(BFW.UI._cargasActivas === 0){
+                    barra.style.opacity = "0";
+                }
+            }, restante);
+
+        } else {
+
+            barra.style.opacity = "0";
+
+        }
+
+    } else {
+
+        if(BFW.UI._cargasActivas === 0){
+            BFW.UI._barraMostradaDesde = Date.now();
+        }
+
+        BFW.UI._cargasActivas++;
+        barra.style.opacity = "1";
+
+    }
+
+};
+/*==================================================
+GALERÍA DE FOTOS
+
+Las fotos viven en Drive y son privadas: no se pueden enlazar
+directamente como imagen porque quien mira la página no tiene permiso
+en ese Drive. Las miniaturas las sirve el servidor, que sí lo tiene.
+
+Se piden todas de una vez y se guardan en memoria durante la sesión:
+volver a una ficha no vuelve a pedirlas.
+==================================================*/
+
+BFW.UI._miniaturas = {};      // fileId -> data URI
+BFW.UI._miniaturasPedidas = {}; // para no pedir dos veces lo mismo
+
+BFW.UI.pedirMiniaturas = function(fileIds, alTerminar){
+
+    const pendientes = (fileIds || []).filter(function(id){
+        return id && !BFW.UI._miniaturas[id] && !BFW.UI._miniaturasPedidas[id];
+    });
+
+    if(!pendientes.length) return false;
+
+    pendientes.forEach(function(id){ BFW.UI._miniaturasPedidas[id] = true; });
+
+    google.script.run
+
+        .withSuccessHandler(function(mapa){
+
+            Object.keys(mapa || {}).forEach(function(id){
+                BFW.UI._miniaturas[id] = mapa[id];
+            });
+
+            if(alTerminar) alTerminar();
+
+        })
+
+        .withFailureHandler(function(e){
+
+            console.error(e);
+
+            if(alTerminar) alTerminar();
+
+        })
+
+        .apiGetMiniaturas(pendientes, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+    return true;
+
+};
+
+/**
+ * Pinta una galería de fotos.
+ *
+ * fotos: [{ driveFileId, nombre, url }]
+ *
+ * Si las miniaturas aún no están, las pide y repinta cuando lleguen;
+ * mientras tanto muestra un hueco gris en su sitio, para que la
+ * pantalla no dé un salto al cargar.
+ */
+BFW.UI.galeria = function(fotos, alRepintar){
+
+    const lista = (fotos || []).filter(function(f){ return f && f.driveFileId; });
+
+    if(!lista.length){
+
+        return `<p class="galeria-vacia">Sin fotos.</p>`;
+
+    }
+
+    BFW.UI.pedirMiniaturas(
+        lista.map(function(f){ return f.driveFileId; }),
+        alRepintar || function(){ BFW.App.render(); }
+    );
+
+    return `
+
+    <div class="galeria">
+
+        ${lista.map(function(f){
+
+            const mini = BFW.UI._miniaturas[f.driveFileId];
+
+            return `
+
+            <a class="galeria-foto" href="${f.url}" target="_blank" rel="noopener" title="${String(f.nombre || "").replace(/"/g, "&quot;")}">
+
+                ${mini
+                    ? `<img src="${mini}" alt="${String(f.nombre || "").replace(/"/g, "&quot;")}" loading="lazy">`
+                    : `<div class="galeria-hueco"></div>`}
+
+                <span class="galeria-pie">${f.nombre || ""}</span>
+
+            </a>
+
+            `;
+
+        }).join("")}
+
+    </div>
+
+    `;
+
+};
+
+/*==================================================
+EMPTY STATE
+==================================================*/
+BFW.UI.empty = function(){
+    // Pendiente de implementar
+};
+/*==================================================
+CONEXIÓN AUTOMÁTICA CON BFW.API (ver engancharCarga más abajo)
+Engancha BFW.UI.loading a TODAS las funciones de BFW.API (getPersonas,
+insertDocumento, updateUsuario, etc.) sin tener que tocar cada módulo
+uno a uno. Así la barra de progreso sale sola tanto al cambiar de
+página como al subir un documento o guardar cualquier cosa.
+Tiene que ejecutarse después de que BFW.js (que define BFW.API) ya
+se haya cargado — por eso este archivo se incluye en Index.html justo
+después de BFW.js.
+==================================================*/
+/**
+ * Engancha la barra de carga a UNA función concreta de BFW.API.
+ *
+ * Se usa también para las que se definen en archivos que se cargan
+ * DESPUÉS de este (Informes, Dashboard, Auth...), y que por tanto no
+ * existían cuando se hizo el enganche automático. Basta con llamar a
+ * BFW.UI.engancharCarga("nombreDeLaFuncion") justo después de
+ * definirla.
+ */
+BFW.UI.engancharCarga = function(nombre){
+
+    if(!BFW.API || typeof BFW.API[nombre] !== "function") return;
+    if(BFW.API[nombre]._conBarraDeCarga) return; // ya estaba enganchada
+
+    const original = BFW.API[nombre];
+
+    const envuelta = function(){
+
+        BFW.UI.loading(true);
+
+        const args = Array.prototype.slice.call(arguments);
+        const callbackOriginal = args[args.length - 1];
+        let ocultada = false;
+
+        function ocultar(){
+            if(ocultada) return;
+            ocultada = true;
+            BFW.UI.loading(false);
+        }
+
+        if(typeof callbackOriginal === "function"){
+
+            args[args.length - 1] = function(){
+                ocultar();
+                callbackOriginal.apply(null, arguments);
+            };
+
+        }
+
+        // Red de seguridad: varias funciones de BFW.API no llaman al
+        // callback cuando la petición falla (solo avisan del error), y
+        // entonces la barra se quedaría encendida para siempre. Con
+        // esto se libera igualmente. ocultar() no hace nada si ya se
+        // llamó antes, así que no molesta en el caso normal.
+        setTimeout(ocultar, BFW.UI._TIEMPO_MAXIMO_CARGA_MS);
+
+        try{
+
+            return original.apply(this, args);
+
+        } catch(e){
+
+            ocultar();
+            throw e;
+
+        }
+
+    };
+
+    envuelta._conBarraDeCarga = true;
+
+    BFW.API[nombre] = envuelta;
+
+};
+
+(function(){
+
+    if(typeof BFW === "undefined" || !BFW.API){
+        // Si por lo que sea BFW.API todavía no existe, no hacemos
+        // nada en vez de romper la carga de la página.
+        return;
+    }
+
+    Object.keys(BFW.API).forEach(function(nombre){
+
+        BFW.UI.engancharCarga(nombre);
+
+    });
+
+})();
+</script>

@@ -1,0 +1,571 @@
+<script>
+
+    /*
+    ==================================================
+    BABEX
+    Archivo : Empresas.js
+    Versión : 0.1.0
+    ==================================================
+    */
+
+    BFW.Empresas = {
+
+        data: null,
+        documentos: null,
+        filtro: "",
+        filtroTipo: "todos",
+        view: "lista",
+        editando: null,
+        current: null
+
+    };
+
+    /* ==================================================
+       DOCUMENTOS VINCULADOS
+    ================================================== */
+
+    BFW.Empresas.cargarDocumentos = function(callback){
+
+        if(BFW.Empresas.documentos !== null){
+
+            callback();
+            return;
+
+        }
+
+        BFW.API.getDocumentos(function(datos){
+
+            BFW.Empresas.documentos = Array.isArray(datos) ? datos : [];
+            callback();
+
+        });
+
+    };
+
+    BFW.Empresas.documentosDe = function(empresaId){
+
+        if(!BFW.Empresas.documentos){
+            return [];
+        }
+
+        return BFW.Empresas.documentos.filter(function(d){
+            return Number(d.empresaId) === Number(empresaId);
+        });
+
+    };
+
+    /* ==================================================
+       RENDER PRINCIPAL
+    ================================================== */
+
+    /**
+     * Carga todo lo que el módulo necesita para pintarse: el listado y
+     * los documentos vinculados.
+     *
+     * Se hace en un solo sitio para que dé igual por dónde se entre —
+     * el menú, el buscador o la ficha de un cliente: siempre llega con
+     * todo cargado.
+     */
+    BFW.Empresas.cargarTodo = function(callback){
+
+        if(BFW.yaSeEstaCargando(BFW.Empresas, callback)) return;
+
+        let pendientes = 2;
+
+        function comprobar(){
+
+            pendientes--;
+
+            if(pendientes === 0){
+
+                BFW.cargaTerminada(BFW.Empresas);
+
+                if(callback) callback();
+
+            }
+
+        }
+
+        if(BFW.Empresas.data !== null){
+
+            comprobar();
+
+        } else {
+
+            BFW.API.getEmpresas(function(datos){
+
+                BFW.Empresas.data = Array.isArray(datos) ? datos : [];
+                comprobar();
+
+            });
+
+        }
+
+        BFW.Empresas.cargarDocumentos(comprobar);
+
+    };
+
+    BFW.Empresas.render = function(){
+
+        if(BFW.Empresas.data === null || BFW.Empresas.documentos === null){
+
+            BFW.Empresas.cargarTodo(function(){
+
+                BFW.App.render();
+
+            });
+
+            return '<div class="empresas-empty"><p>Cargando empresas...</p></div>';
+
+        }
+
+        switch(BFW.Empresas.view){
+
+            case "detalle":
+                return BFW.Empresas.renderDetalle();
+
+            case "formulario":
+                return BFW.Empresas.renderFormularioBase(BFW.Empresas.editando);
+
+            case "lista":
+            default:
+                return BFW.Empresas.renderLista();
+
+        }
+
+    };
+
+    /* ==================================================
+       LISTA
+    ================================================== */
+
+    BFW.Empresas.renderLista = function(){
+
+        const filtro = (BFW.Empresas.filtro || "").toLowerCase();
+        const filtroTipo = BFW.Empresas.filtroTipo || "todos";
+
+        let lista = BFW.Empresas.data.filter(function(e){
+
+            const coincideTexto = filtro === "" ||
+                (e.nombre || "").toLowerCase().indexOf(filtro) !== -1 ||
+                (e.cif || "").toLowerCase().indexOf(filtro) !== -1;
+
+            const tipo = e.tipo || "Empresa";
+
+            const coincideTipo = filtroTipo === "todos" ||
+                (filtroTipo === "empresa" && tipo === "Empresa") ||
+                (filtroTipo === "proveedor" && tipo === "Proveedor");
+
+            return coincideTexto && coincideTipo;
+
+        });
+
+        lista.sort(function(a,b){
+            return (a.nombre||"").localeCompare(b.nombre||"","es");
+        });
+
+        let filas = lista.map(function(e){
+
+            const badgeClass = (e.tipo === "Proveedor") ? "babex-badge-warning" : "babex-badge-success";
+
+            return `
+
+                <div class="empresa-list-card" onclick="BFW.Empresas.seleccionar(${e.id})">
+
+                    <div class="empresa-list-icon">🏢</div>
+
+                    <div class="empresa-list-info">
+
+                        <div class="empresa-list-title">${e.nombre || "Sin nombre"}</div>
+
+                        <div class="empresa-list-sub">${e.cif || "Sin CIF"}${e.telefono ? " · " + e.telefono : ""}</div>
+
+                    </div>
+
+                    <div class="babex-badge ${badgeClass}">${e.tipo || "Empresa"}</div>
+
+                </div>
+
+            `;
+
+        }).join("");
+
+        if(lista.length === 0){
+
+            filas = '<div class="empresas-empty"><p>No se han encontrado empresas.</p></div>';
+
+        }
+
+        return `
+
+        <div class="empresas-panel">
+
+            <div class="empresas-header-panel">
+
+                <div class="empresas-header">
+
+                    <div>
+                        <div class="babex-overline">Directorio</div>
+                        <h2>Empresas</h2>
+                    </div>
+
+                    <button class="babex-btn-primary" onclick="BFW.Empresas.nueva()">+ Nueva empresa</button>
+
+                </div>
+
+                <div class="empresas-toolbar">
+
+                    <div class="empresas-search">
+
+                        <span class="empresas-search-icon">🔍</span>
+
+                        <input id="txtBuscarEmpresa" class="babex-input" type="text" placeholder="Buscar por nombre o CIF..."
+                            value="${BFW.Empresas.filtro || ""}"
+                            oninput="BFW.Empresas.buscar(this.value)">
+
+                    </div>
+
+                </div>
+
+                <div class="empresas-filtros">
+
+                    <div class="empresa-chip ${filtroTipo=="todos"?"activo":""}" onclick="BFW.Empresas.filtrarTipo('todos')">Todos</div>
+                    <div class="empresa-chip ${filtroTipo=="empresa"?"activo":""}" onclick="BFW.Empresas.filtrarTipo('empresa')">Empresas</div>
+                    <div class="empresa-chip ${filtroTipo=="proveedor"?"activo":""}" onclick="BFW.Empresas.filtrarTipo('proveedor')">Proveedores</div>
+
+                </div>
+
+            </div>
+
+            <div class="empresas-list">
+
+                ${filas}
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       DETALLE
+    ================================================== */
+
+    BFW.Empresas.renderDetalle = function(){
+
+        const e = BFW.Empresas.current;
+
+        if(!e) return BFW.Empresas.renderLista();
+
+        return `
+
+        <div class="empresa-detail">
+
+            <div class="empresa-top">
+
+                <div class="empresa-identidad">
+
+                    <div class="empresa-avatar-lg">🏢</div>
+
+                    <div>
+
+                        <h1 class="empresa-title">${e.nombre || "Sin nombre"}</h1>
+
+                        <div class="empresa-subtitle">
+                            <span class="babex-badge ${e.tipo === "Proveedor" ? "babex-badge-warning" : "babex-badge-success"}">${e.tipo || "Empresa"}</span>
+                            <span>· ${e.cif || "Sin CIF"}</span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display:flex; gap:10px;">
+
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-primary" onclick="BFW.Empresas.editar(${e.id})">Editar</button>` : ""}
+                    ${BFW.Auth.esAdmin() ? `<button class="babex-btn-danger" onclick="BFW.Empresas.eliminar(${e.id})">Eliminar</button>` : ""}
+                    <button class="babex-btn-secondary" onclick="BFW.Empresas.volver()">Volver</button>
+
+                </div>
+
+            </div>
+
+            <div class="empresa-form-grid">
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Contacto</div>
+                    <h3>Datos de la empresa</h3>
+
+                    <div class="empresa-detail-row">
+                        <span class="babex-overline">Teléfono</span>
+                        <span>${e.telefono || "—"}</span>
+                    </div>
+
+                    <div class="empresa-detail-row">
+                        <span class="babex-overline">Email</span>
+                        <span>${e.email || "—"}</span>
+                    </div>
+
+                    <div class="empresa-detail-row">
+                        <span class="babex-overline">Web</span>
+                        <span>${e.web || "—"}</span>
+                    </div>
+
+                    <div class="empresa-detail-row">
+                        <span class="babex-overline">CIF</span>
+                        <span>${e.cif || "—"}</span>
+                    </div>
+
+                </div>
+
+                <div class="babex-card">
+
+                    <div class="babex-overline">Archivo</div>
+                    <h3>Documentos</h3>
+
+                    ${BFW.Documentos.renderMiniLista(BFW.Empresas.documentosDe(e.id), {modulo:'empresas', id:e.id})}
+
+                    <button class="babex-btn-secondary" style="margin-top:14px; width:100%;" onclick="BFW.Documentos.nuevoDesde({vinculo:'${e.tipo === "Proveedor" ? "proveedor" : "empresa"}', empresaId:${e.id}}, {modulo:'empresas', id:${e.id}})">+ Añadir documento</button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       FORMULARIO (crear / editar)
+    ================================================== */
+
+    BFW.Empresas.renderFormularioBase = function(empresa){
+
+        const e = empresa || {
+            id: null,
+            nombre: "",
+            cif: "",
+            telefono: "",
+            email: "",
+            web: "",
+            tipo: "Empresa"
+        };
+
+        return `
+
+        <div class="empresa-form-wrapper">
+
+            <div class="empresa-editor-header">
+
+                <h2>${e.id ? "Editar empresa" : "Nueva empresa"}</h2>
+
+            </div>
+
+            <div class="babex-card empresa-form-section">
+
+                <h3>Datos de la empresa</h3>
+
+                <div class="empresa-form-grid">
+
+                    <div class="empresa-campo">
+                        <label>Nombre *</label>
+                        <input id="empresa-nombre" class="babex-input" value="${e.nombre || ""}">
+                    </div>
+
+                    <div class="empresa-campo">
+                        <label>Tipo *</label>
+                        <select id="empresa-tipo" class="babex-input">
+                            <option value="Empresa" ${(e.tipo || "Empresa")=="Empresa"?"selected":""}>Empresa</option>
+                            <option value="Proveedor" ${e.tipo=="Proveedor"?"selected":""}>Proveedor</option>
+                        </select>
+                    </div>
+
+                    <div class="empresa-campo">
+                        <label>CIF</label>
+                        <input id="empresa-cif" class="babex-input" value="${e.cif || ""}">
+                    </div>
+
+                    <div class="empresa-campo">
+                        <label>Teléfono *</label>
+                        <input id="empresa-telefono" class="babex-input" type="tel" maxlength="9" inputmode="numeric" pattern="[0-9]*" value="${e.telefono || ""}">
+                    </div>
+
+                    <div class="empresa-campo">
+                        <label>Email *</label>
+                        <input id="empresa-email" class="babex-input" type="email" value="${e.email || ""}">
+                    </div>
+
+                    <div class="empresa-campo">
+                        <label>Web</label>
+                        <input id="empresa-web" class="babex-input" value="${e.web || ""}">
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="empresa-form-footer">
+
+                <div class="empresa-form-buttons">
+                    <button class="babex-btn-secondary" onclick="BFW.Empresas.volver()">Cancelar</button>
+                    <button class="babex-btn-primary" onclick="BFW.Empresas.guardar(${e.id || "null"})">Guardar</button>
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
+
+    };
+
+    /* ==================================================
+       ACCIONES
+    ================================================== */
+
+    BFW.Empresas.nueva = function(){
+
+        BFW.Empresas.editando = null;
+        BFW.Empresas.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Empresas.editar = function(id){
+
+        const empresa = BFW.Empresas.data.find(function(e){ return Number(e.id) === Number(id); });
+
+        BFW.Empresas.editando = empresa || null;
+        BFW.Empresas.view = "formulario";
+        BFW.App.render();
+
+    };
+
+    BFW.Empresas.seleccionar = function(id){
+
+        const empresa = BFW.Empresas.data.find(function(e){ return Number(e.id) === Number(id); });
+
+        BFW.Empresas.current = empresa || null;
+        BFW.Empresas.view = "detalle";
+
+        BFW.Empresas.cargarDocumentos(function(){
+
+            BFW.App.render();
+
+        });
+
+    };
+
+    BFW.Empresas.volver = function(){
+
+        BFW.Empresas.view = "lista";
+        BFW.Empresas.editando = null;
+        BFW.App.render();
+
+    };
+
+    BFW.Empresas.buscar = function(valor){
+
+        BFW.Empresas.filtro = valor;
+        BFW.App.render();
+
+    };
+
+    BFW.Empresas.filtrarTipo = function(tipo){
+
+        BFW.Empresas.filtroTipo = tipo;
+        BFW.App.render();
+
+    };
+
+    BFW.Empresas.guardar = function(id){
+
+        const empresa = {
+            id: id || null,
+            nombre: document.getElementById("empresa-nombre").value.trim(),
+            tipo: document.getElementById("empresa-tipo").value,
+            cif: document.getElementById("empresa-cif").value.trim(),
+            telefono: document.getElementById("empresa-telefono").value.trim(),
+            email: document.getElementById("empresa-email").value.trim(),
+            web: document.getElementById("empresa-web").value.trim()
+        };
+
+        if(!empresa.nombre){
+
+            alert("Introduce el nombre de la empresa.");
+            return;
+
+        }
+
+        if(!empresa.telefono){
+
+            alert("Introduce el teléfono.");
+            return;
+
+        }
+
+        if(!/^[0-9]{9}$/.test(empresa.telefono)){
+
+            alert("El teléfono debe tener 9 dígitos numéricos.");
+            return;
+
+        }
+
+        if(!empresa.email){
+
+            alert("Introduce el email.");
+            return;
+
+        }
+
+        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(empresa.email)){
+
+            alert("Introduce un email con formato válido.");
+            return;
+
+        }
+
+        function terminar(){
+
+            BFW.Empresas.data = null;
+            BFW.Empresas.view = "lista";
+            BFW.Empresas.editando = null;
+            BFW.App.render();
+
+        }
+
+        if(empresa.id){
+
+            BFW.API.updateEmpresa(empresa, terminar);
+
+        } else {
+
+            BFW.API.insertEmpresa(empresa, terminar);
+
+        }
+
+    };
+
+    BFW.Empresas.eliminar = function(id){
+
+        BFW.UI.confirmar("¿Eliminar esta empresa?", function(){
+
+            BFW.API.deleteEmpresa(id, function(){
+
+                BFW.Empresas.data = null;
+                BFW.Empresas.view = "lista";
+                BFW.Empresas.current = null;
+                BFW.App.render();
+
+            });
+
+        });
+
+    };
+
+</script>

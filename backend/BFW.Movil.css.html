@@ -1,0 +1,282 @@
+<style>
+
+    /* ==================================================
+       BABEX — ADAPTACIÓN A MÓVIL
+       Se carga el último, después del resto de CSS, para poder
+       corregir lo que haga falta sin tocar los demás archivos.
+
+       Dos cortes:
+         · hasta 900px  → tablets y móviles apaisados
+         · hasta 700px  → móviles
+
+       En móvil el menú lateral pasa a ser una barra inferior fija,
+       que es donde el pulgar llega sin estirarse.
+    ================================================== */
+
+    @media(max-width:900px){
+
+        /* El maestro/detalle (listado + ficha) deja de ir en dos
+           columnas: en pantallas estrechas no caben. */
+        .bfw-master-detail{
+            grid-template-columns:1fr;
+            height:auto;
+            gap:16px;
+        }
+
+        .bfw-panel{
+            max-height:none;
+        }
+
+        /* Los formularios de dos columnas pasan a una. */
+        .persona-form-grid,
+        .inmueble-form-grid,
+        .caso-form-grid,
+        .empresa-form-grid,
+        .agenda-form-grid,
+        .documento-form-grid{
+            grid-template-columns:1fr !important;
+        }
+
+        .admin-usuario-add{
+            grid-template-columns:1fr !important;
+        }
+
+        .persona-observaciones-layout{
+            grid-template-columns:1fr !important;
+        }
+
+    }
+
+    @media(max-width:700px){
+
+        /* ==============================
+           ESTRUCTURA
+        ============================== */
+
+        .babex-shell{
+            flex-direction:column;
+            height:100vh;
+        }
+
+        /* Menú lateral → barra inferior fija */
+        .babex-sidebar{
+            order:2;
+            position:fixed;
+            bottom:0;
+            left:0;
+            right:0;
+            width:100%;
+            height:62px;
+            flex-direction:row;
+            border-right:none;
+            border-top:1px solid var(--color-border);
+            z-index:9000;
+            padding:0;
+        }
+
+        .sidebar-logo{
+            display:none;
+        }
+
+        .sidebar-menu{
+            display:flex;
+            flex-direction:row;
+            width:100%;
+            height:100%;
+            overflow-x:auto;
+            overflow-y:hidden;
+            padding:0;
+            gap:0;
+            -webkit-overflow-scrolling:touch;
+        }
+
+        .sidebar-item{
+            flex:1 0 auto;
+            min-width:64px;
+            flex-direction:column;
+            justify-content:center;
+            align-items:center;
+            gap:2px;
+            margin:0;
+            padding:8px 6px;
+            border-radius:0;
+        }
+
+        .sidebar-icon{
+            width:auto;
+            font-size:19px;
+        }
+
+        /* En la barra inferior el texto sí se ve (pequeño), porque
+           solo con iconos cuesta distinguir los módulos. */
+        .sidebar-title{
+            display:block;
+            font-size:10px;
+            line-height:1.1;
+            text-align:center;
+            white-space:nowrap;
+        }
+
+        .babex-main{
+            order:1;
+            flex:1;
+            min-height:0;
+            padding-bottom:62px; /* hueco para la barra inferior */
+        }
+
+        /* ==============================
+           CABECERA
+        ============================== */
+
+        .babex-header{
+            height:auto;
+            min-height:56px;
+            flex-wrap:wrap;
+            gap:10px;
+            padding:10px 16px;
+        }
+
+        .header-title{
+            font-size:19px;
+        }
+
+        /* El buscador baja a su propia línea, a lo ancho. */
+        .header-buscador{
+            order:3;
+            flex:0 0 100%;
+            padding:0;
+            justify-content:stretch;
+        }
+
+        .header-buscador .babex-input{
+            max-width:none;
+        }
+
+        .header-user{
+            gap:10px;
+        }
+
+        /* En pantalla estrecha, el nombre y el rol sobran: basta el
+           avatar y los botones de acción. */
+        .auth-usuario-info{
+            display:none;
+        }
+
+        /* ==============================
+           CONTENIDO
+        ============================== */
+
+        .babex-content{
+            padding:16px;
+        }
+
+        .dashboard-title h2,
+        .admin-header h2{
+            font-size:22px;
+        }
+
+        /* Cabeceras de módulo: el botón de "+ Nuevo" debajo del
+           título en vez de a su lado. */
+        .dashboard-title,
+        .personas-header,
+        .admin-header{
+            flex-direction:column;
+            align-items:stretch;
+            gap:12px;
+        }
+
+        .personas-toolbar{
+            flex-direction:column;
+            align-items:stretch;
+            gap:10px;
+        }
+
+        .personas-btn-add{
+            width:100%;
+        }
+
+        /* Listados: alto fijo razonable para poder llegar al detalle
+           haciendo scroll, en vez de ocupar toda la pantalla. */
+        .personas-list,
+        .inmuebles-list,
+        .casos-list,
+        .empresas-list,
+        .documentos-list{
+            max-height:45vh;
+        }
+
+        /* Filas de usuario/solicitud/resultado: en vertical. */
+        .admin-usuario-row{
+            flex-wrap:wrap;
+        }
+
+        .admin-usuario-rol-select,
+        .admin-solicitud-nombre{
+            width:100%;
+        }
+
+        /* Botonera de acciones de ficha: a lo ancho y con espacio
+           suficiente para el dedo. */
+        .babex-btn,
+        .babex-btn-primary,
+        .babex-btn-secondary,
+        .babex-btn-danger{
+            min-height:42px;
+        }
+
+        /* ==============================
+           INFORMES
+        ============================== */
+
+        .informes-tipos{
+            grid-template-columns:1fr;
+        }
+
+        .informes-periodo-rapido button{
+            flex:1 1 calc(50% - 5px);
+        }
+
+        .informe-listo{
+            flex-direction:column;
+            align-items:stretch;
+        }
+
+        .informe-listo a{
+            justify-content:center;
+        }
+
+        /* ==============================
+           AVISOS Y DIÁLOGOS
+        ============================== */
+
+        /* Los toasts, a lo ancho de la pantalla. */
+        #babex-toasts{
+            left:12px;
+            right:12px;
+            max-width:none;
+        }
+
+        /* ==============================
+           LOGIN
+        ============================== */
+
+        .auth-card{
+            padding:30px 22px;
+        }
+
+    }
+
+    /* En móviles muy estrechos, el calendario de la agenda es lo que
+       peor encaja: se deja desplazable en horizontal en vez de
+       aplastar las columnas hasta hacerlas ilegibles. */
+    @media(max-width:560px){
+
+        .agenda-calendario,
+        .agenda-grid{
+            overflow-x:auto;
+            -webkit-overflow-scrolling:touch;
+        }
+
+    }
+
+</style>

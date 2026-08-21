@@ -1,0 +1,1566 @@
+<script>
+/*
+==================================================
+BABEX
+Archivo : Personas.html
+Versión : 0.5.0
+==================================================
+*/
+
+BFW.Personas = {
+    data: null,
+    inmuebles: null,
+    casos: null,
+    citas: null,
+    documentos: null,
+    filtro: "",
+    tipoFiltro: "TODOS",
+    view: "LIST",
+    editando: false,
+    current: null
+};
+
+/**
+ * Carga el listado de personas y todo lo relacionado que necesita la
+ * ficha. Lo usa BFW.irAFicha para que, al llegar desde otro módulo,
+ * la ficha salga completa en vez de con los apartados vacíos.
+ */
+BFW.Personas.cargarTodo = function(callback){
+
+    if(BFW.yaSeEstaCargando(BFW.Personas, callback)) return;
+
+    function seguir(){
+
+        BFW.Personas.cargarRelacionados(function(){
+
+            BFW.cargaTerminada(BFW.Personas);
+
+            if(callback) callback();
+
+        });
+
+    }
+
+    if(BFW.Personas.data !== null){
+
+        seguir();
+        return;
+
+    }
+
+    BFW.API.getPersonas(function(datos){
+
+        BFW.Personas.data = Array.isArray(datos) ? datos : [];
+        seguir();
+
+    });
+
+};
+
+BFW.Personas.load = function(){
+
+BFW.API.getPersonas(function(datos){
+
+    BFW.Personas.data = Array.isArray(datos) ? datos : [];
+
+    BFW.App.render();
+
+});
+
+};
+
+BFW.Personas.buscar=function(txt){
+
+BFW.Personas.filtro=(txt||"").toLowerCase();
+
+document.querySelector(".personas-list").innerHTML=BFW.Personas.renderCards();
+
+};
+
+BFW.Personas.filtrarTipo = function(tipo){
+
+BFW.Personas.tipoFiltro = tipo;
+
+document.querySelector(".personas-list").innerHTML =
+    BFW.Personas.renderCards();
+
+    document.querySelector(".personas-filtros").innerHTML = `
+
+<button
+    class="persona-chip persona-chip-todos ${BFW.Personas.tipoFiltro=='TODOS'?'activo':''}"
+    onclick="BFW.Personas.filtrarTipo('TODOS')">
+
+    Todos
+
+</button>
+
+<button
+    class="persona-chip persona-chip-cliente ${BFW.Personas.tipoFiltro=='CLIENTE'?'activo':''}"
+    onclick="BFW.Personas.filtrarTipo('CLIENTE')">
+
+    Clientes
+
+</button>
+
+<button
+    class="persona-chip persona-chip-premium ${BFW.Personas.tipoFiltro=='CLIENTE PREMIUM'?'activo':''}"
+    onclick="BFW.Personas.filtrarTipo('CLIENTE PREMIUM')">
+
+    Premium
+
+</button>
+
+<button
+    class="persona-chip persona-chip-internos ${BFW.Personas.tipoFiltro=='INTERNOS'?'activo':''}"
+    onclick="BFW.Personas.filtrarTipo('INTERNOS')">
+
+    Empleados
+
+</button>
+
+`;
+};
+
+BFW.Personas.iniciales = function(nombre, apellidos){
+
+let ini = "";
+
+if(nombre && nombre.length){
+    ini += nombre.trim().charAt(0).toUpperCase();
+}
+
+if(apellidos && apellidos.length){
+    ini += apellidos.trim().charAt(0).toUpperCase();
+}
+
+return ini;
+
+};
+
+BFW.Personas.badgeTipo = function(tipo){
+
+switch(tipo){
+
+    case "Cliente":
+
+        return `<span class="badge badge-cliente">Cliente</span>`;
+
+    case "Cliente Premium":
+
+        return `<span class="badge badge-premium">Premium</span>`;
+
+    case "Proveedor":
+
+        return `<span class="badge badge-proveedor">Proveedor</span>`;
+
+    case "Fundador":
+
+        return `<span class="badge badge-fundador">Fundador</span>`;
+
+    default:
+
+        return `<span class="badge">${tipo}</span>`;
+
+}
+
+};
+
+BFW.Personas.nueva = function(){
+
+BFW.Personas.current = null;
+
+BFW.Personas.editando = false;
+
+BFW.Personas.view = "FORM";
+
+BFW.App.render();
+
+};
+
+BFW.Personas.back = function(){
+
+BFW.Personas.editando = false;
+
+BFW.Personas.view = "LIST";
+
+// Si se llegó aquí desde un acceso directo de otra pantalla (por
+// ejemplo "Nueva Persona" en el panel), se regresa a ella.
+if(BFW.Router.regresar()) return;
+
+BFW.App.render();
+
+};
+
+BFW.Personas.guardarNueva = function(){
+
+const persona = {
+
+    nombre: document.getElementById("nombre").value.trim(),
+
+    apellidos: document.getElementById("apellidos").value.trim(),
+
+    tipo: document.getElementById("tipo").value,
+
+    telefono: document.getElementById("telefono").value.trim(),
+
+    email: document.getElementById("email").value.trim(),
+
+    ciudad: document.getElementById("ciudad").value.trim(),
+
+    direccion: document.getElementById("direccion").value.trim(),
+
+    observaciones: document.getElementById("observaciones").value.trim()
+
+};
+
+if(persona.nombre===""){
+
+    alert("Introduce el nombre.");
+
+    return;
+
+}
+
+if(persona.apellidos===""){
+
+    alert("Introduce los apellidos.");
+
+    return;
+
+}
+
+if(persona.telefono===""){
+
+    alert("Introduce el teléfono.");
+
+    return;
+
+}
+
+if(!/^[0-9]{9}$/.test(persona.telefono)){
+
+    alert("El teléfono debe tener 9 dígitos numéricos.");
+
+    return;
+
+}
+
+if(persona.email!=="" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(persona.email)){
+
+    alert("Introduce un email con formato válido.");
+
+    return;
+
+}
+
+BFW.API.insertPersona(persona,function(){
+
+    BFW.Personas.view = "LIST";
+
+    BFW.Personas.editando = false;
+
+    BFW.Personas.current = null;
+
+    BFW.Personas.load();
+
+});
+
+};
+
+BFW.Personas.guardarEdicion = function(){
+
+const persona = {
+
+    id: BFW.Personas.current,
+
+    nombre: document.getElementById("nombre").value.trim(),
+    apellidos: document.getElementById("apellidos").value.trim(),
+    tipo: document.getElementById("tipo").value.trim(),
+    telefono: document.getElementById("telefono").value.trim(),
+    email: document.getElementById("email").value.trim(),
+    ciudad: document.getElementById("ciudad").value.trim(),
+    direccion: document.getElementById("direccion").value.trim(),
+    observaciones: document.getElementById("observaciones").value.trim()
+
+};
+
+if(persona.nombre===""){
+
+    alert("Introduce el nombre.");
+
+    return;
+
+}
+
+if(persona.apellidos===""){
+
+    alert("Introduce los apellidos.");
+
+    return;
+
+}
+
+if(persona.telefono===""){
+
+    alert("Introduce el teléfono.");
+
+    return;
+
+}
+
+if(!/^[0-9]{9}$/.test(persona.telefono)){
+
+    alert("El teléfono debe tener 9 dígitos numéricos.");
+
+    return;
+
+}
+
+if(persona.email!=="" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(persona.email)){
+
+    alert("Introduce un email con formato válido.");
+
+    return;
+
+}
+
+BFW.API.updatePersona(persona,function(resultado){
+
+if(resultado && resultado.ok === false){
+
+    alert(resultado.error || "No se han podido guardar los cambios.");
+    return;
+
+}
+
+BFW.Personas.load();
+
+BFW.Personas.back();
+
+});
+
+};
+
+BFW.Personas.eliminar = function(){
+
+BFW.UI.confirmar("¿Eliminar esta persona?", function(){
+
+    BFW.API.deletePersona(BFW.Personas.current,function(){
+
+        BFW.Personas.current = null;
+        BFW.Personas.view = "LIST";
+        BFW.Personas.load();
+
+    });
+
+});
+
+};
+
+/* ==================================================
+   CREAR DESDE LA FICHA DEL CLIENTE
+
+   Abre el formulario del módulo correspondiente con el cliente ya
+   elegido, y deja registrado de dónde se venía para que "Cancelar"
+   devuelva a su ficha en vez de dejarte en otro listado.
+================================================== */
+
+BFW.Personas.crear = function(modulo, personaId){
+
+    const acciones = {
+
+        caso: function(){
+            BFW.Casos.nuevo({ personaId: personaId });
+        },
+
+        inmueble: function(){
+            BFW.Inmuebles.nueva({ personaId: personaId });
+        },
+
+        cita: function(){
+            BFW.Agenda.nueva({ personaId: personaId });
+        }
+
+    };
+
+    const destinos = { caso: "casos", inmueble: "inmuebles", cita: "agenda" };
+
+    const destino = destinos[modulo];
+    const accion = acciones[modulo];
+
+    if(!destino || !accion) return;
+
+    BFW.Router.volverA = "personas";
+    BFW.Router.current = destino;
+
+    // Al volver, la ficha tiene que reflejar lo que se acabe de crear:
+    // se descarta el historial para que se vuelva a pedir.
+    BFW.Personas.historial = null;
+    BFW.Personas.historialDe = null;
+
+    // Se carga todo lo del módulo destino antes de abrir el
+    // formulario: si no, los desplegables de cliente e inmueble
+    // aparecen vacíos.
+    BFW.asegurarDatos(destino, accion);
+
+};
+
+/* ==================================================
+   HISTORIAL DE LA PERSONA
+
+   Se construye con los datos reales (casos, citas, documentos y
+   equipamiento de sus inmuebles), no con la hoja ACTIVIDAD: allí el
+   detalle es texto libre y no guarda a qué cliente pertenece cada
+   acción.
+================================================== */
+
+BFW.Personas.historial = null;
+BFW.Personas.historialDe = null;
+
+BFW.API.getHistorialPersona = function(personaId, callback){
+
+    google.script.run
+        .withSuccessHandler(function(datos){ callback(datos); })
+        .withFailureHandler(function(e){ console.error(e); callback([]); })
+        .apiGetHistorialPersona(personaId, BFW.Auth.usuario ? BFW.Auth.usuario.email : "");
+
+};
+
+BFW.UI.engancharCarga("getHistorialPersona");
+
+BFW.Personas.ICONOS_HISTORIAL = {
+    "caso":        "📂",
+    "caso-cierre": "✅",
+    "cita":        "📅",
+    "documento":   "📄",
+    "instalado":   "🔧",
+    "propuesto":   "💡"
+};
+
+BFW.Personas.renderHistorial = function(personaId){
+
+    if(BFW.Personas.historial === null || BFW.Personas.historialDe !== personaId){
+
+        BFW.Personas.historialDe = personaId;
+
+        BFW.API.getHistorialPersona(personaId, function(datos){
+
+            BFW.Personas.historial = Array.isArray(datos) ? datos : [];
+            BFW.App.render();
+
+        });
+
+        return `<p>Cargando historial...</p>`;
+
+    }
+
+    if(!BFW.Personas.historial.length){
+
+        return `<p>Todavía no hay actividad registrada.</p>`;
+
+    }
+
+    return `
+
+    <div class="persona-historial">
+
+        ${BFW.Personas.historial.map(function(ev){
+
+            return `
+
+            <div class="persona-hito" ${ev.id ? `onclick="BFW.irAFicha('${ev.modulo}', ${ev.id})"` : ""}>
+
+                <div class="persona-hito-icono">${BFW.Personas.ICONOS_HISTORIAL[ev.tipo] || "•"}</div>
+
+                <div class="persona-hito-datos">
+                    <div class="persona-hito-titulo">${ev.titulo}</div>
+                    ${ev.detalle ? `<div class="persona-hito-detalle">${ev.detalle}</div>` : ""}
+                </div>
+
+                <div class="persona-hito-fecha">${BFW.formatearFecha(ev.fecha)}</div>
+
+            </div>
+
+            `;
+
+        }).join("")}
+
+    </div>
+
+    `;
+
+};
+
+BFW.Personas.renderCards = function(){
+
+let html = "";
+
+let personas = [...BFW.Personas.data];
+
+//=========================
+// FILTRO POR TIPO
+//=========================
+
+personas = personas.filter(p=>{
+
+    switch(BFW.Personas.tipoFiltro){
+
+        case "CLIENTE":
+            return p.tipo=="Cliente";
+
+        case "CLIENTE PREMIUM":
+            return p.tipo=="Cliente Premium";
+
+        case "PROVEEDOR":
+            return p.tipo=="Proveedor";
+
+        case "INTERNOS":
+            return p.tipo=="Empleado" || p.tipo=="Fundador";
+
+        case "TODOS":
+        default:
+            return p.tipo!="Empleado" && p.tipo!="Fundador";
+
+    }
+
+});
+
+//=========================
+// FILTRO TEXTO
+//=========================
+
+if(BFW.Personas.filtro!=""){
+
+    personas = personas.filter(p=>{
+
+        return (
+
+            `${p.nombre||""}
+             ${p.apellidos||""}
+             ${p.telefono||""}
+             ${p.email||""}
+             ${p.ciudad||""}
+             ${p.tipo||""}`
+
+        ).toLowerCase().includes(BFW.Personas.filtro);
+
+    });
+
+}
+
+//=========================
+// ORDEN
+//=========================
+
+personas.sort((a,b)=>{
+
+    return `${a.apellidos} ${a.nombre}`
+    .localeCompare(`${b.apellidos} ${b.nombre}`,"es");
+
+});
+
+//=========================
+// TARJETAS
+//=========================
+
+personas.forEach(p=>{
+
+    html+=`
+
+<div class="persona-list-card ${Number(BFW.Personas.current)==Number(p.id)?"persona-list-card-active":""}"
+
+onclick="BFW.Personas.seleccionar(${p.id})">
+
+<div class="persona-list-avatar tipo-${(p.tipo||"").toLowerCase().replace(/\s+/g,"-")}">
+
+    ${BFW.Personas.iniciales(p.nombre,p.apellidos)}
+
+</div>
+
+<div class="persona-list-info">
+
+    <div class="persona-list-name">
+
+        ${p.nombre} ${p.apellidos}
+
+    </div>
+
+</div>
+
+</div>
+
+`;
+
+});
+
+return html;
+
+};
+BFW.Personas.inmueblesDe = function(personaId){
+
+if(!BFW.Personas.inmuebles){
+    return [];
+}
+
+return BFW.Personas.inmuebles.filter(function(i){
+    return Number(i.personaId) === Number(personaId);
+});
+
+};
+
+BFW.Personas.casosDe = function(personaId){
+
+if(!BFW.Personas.casos){
+    return [];
+}
+
+return BFW.Personas.casos.filter(function(c){
+    return Number(c.personaId) === Number(personaId);
+});
+
+};
+
+BFW.Personas.citasDe = function(personaId){
+
+if(!BFW.Personas.citas){
+    return [];
+}
+
+return BFW.Personas.citas
+    .filter(function(c){
+        return Number(c.personaId) === Number(personaId) && c.estado !== "Cancelada";
+    })
+    .sort(function(a,b){
+        return ((a.fecha||"")+" "+(a.hora||"")).localeCompare((b.fecha||"")+" "+(b.hora||""));
+    });
+
+};
+
+BFW.Personas.documentosDe = function(personaId){
+
+if(!BFW.Personas.documentos){
+    return [];
+}
+
+return BFW.Personas.documentos.filter(function(d){
+    return Number(d.personaId) === Number(personaId);
+});
+
+};
+
+BFW.Personas.cargarRelacionados = function(callback){
+
+const faltaInmuebles = BFW.Personas.inmuebles === null;
+const faltaCasos = BFW.Personas.casos === null;
+const faltaCitas = BFW.Personas.citas === null;
+const faltaDocumentos = BFW.Personas.documentos === null;
+
+if(!faltaInmuebles && !faltaCasos && !faltaCitas && !faltaDocumentos){
+
+    callback();
+    return;
+
+}
+
+let pendientes = 0;
+
+if(faltaInmuebles) pendientes++;
+if(faltaCasos) pendientes++;
+if(faltaCitas) pendientes++;
+if(faltaDocumentos) pendientes++;
+
+function comprobar(){
+
+    pendientes--;
+
+    if(pendientes === 0){
+
+        callback();
+
+    }
+
+}
+
+if(faltaInmuebles){
+
+    BFW.API.getInmuebles(function(datos){
+
+        BFW.Personas.inmuebles = Array.isArray(datos) ? datos : [];
+
+        comprobar();
+
+    });
+
+}
+
+if(faltaCitas){
+
+    BFW.API.getAgenda(function(datos){
+
+        BFW.Personas.citas = Array.isArray(datos) ? datos : [];
+
+        comprobar();
+
+    });
+
+}
+
+if(faltaCasos){
+
+    BFW.API.getCasos(function(datos){
+
+        BFW.Personas.casos = Array.isArray(datos) ? datos : [];
+
+        comprobar();
+
+    });
+
+}
+
+if(faltaDocumentos){
+
+    BFW.API.getDocumentos(function(datos){
+
+        BFW.Personas.documentos = Array.isArray(datos) ? datos : [];
+
+        comprobar();
+
+    });
+
+}
+
+};
+
+BFW.Personas.seleccionar = function(id){
+
+const lista = document.querySelector(".personas-list");
+const scroll = lista ? lista.scrollTop : 0;
+
+// El historial es de la persona que se abre: se descarta el anterior
+// para que no se vea el de otro cliente mientras carga.
+BFW.Personas.historial = null;
+BFW.Personas.historialDe = null;
+
+BFW.Personas.current = Number(id);
+
+BFW.Personas.editando = false;
+
+BFW.Personas.cargarRelacionados(function(){
+
+    BFW.App.render();
+
+    requestAnimationFrame(function(){
+
+        const listaNueva = document.querySelector(".personas-list");
+
+        if(listaNueva){
+
+            listaNueva.scrollTop = scroll;
+
+        }
+
+    });
+
+});
+
+};
+BFW.Personas.renderLista = function(){
+
+return `
+
+<div class="personas-panel">
+
+    <div class="personas-header-panel">
+
+        <div class="personas-toolbar">
+
+            <div class="personas-search">
+
+                <span class="personas-search-icon">🔍</span>
+
+                <input
+                    id="txtBuscarPersona"
+                    class="babex-input"
+                    placeholder="Buscar personas..."
+                    value="${BFW.Personas.filtro}"
+                    oninput="BFW.Personas.buscar(this.value)">
+
+            </div>
+
+            <button
+                class="babex-btn babex-btn-primary personas-btn-add"
+                onclick="BFW.Personas.nueva()">
+
+                + Nueva
+
+            </button>
+
+        </div>
+
+        <div class="personas-filtros">
+
+<button
+    class="persona-chip persona-chip-todos ${BFW.Personas.tipoFiltro=="TODOS"?"activo":""}"
+    onclick="BFW.Personas.filtrarTipo('TODOS')">
+
+    Todos
+
+</button>
+
+<button
+    class="persona-chip persona-chip-cliente ${BFW.Personas.tipoFiltro=="CLIENTE"?"activo":""}"
+    onclick="BFW.Personas.filtrarTipo('CLIENTE')">
+
+    Clientes
+
+</button>
+
+<button
+    class="persona-chip persona-chip-premium ${BFW.Personas.tipoFiltro=="CLIENTE PREMIUM"?"activo":""}"
+    onclick="BFW.Personas.filtrarTipo('CLIENTE PREMIUM')">
+
+    Premium
+
+</button>
+
+<button
+    class="persona-chip persona-chip-internos ${BFW.Personas.tipoFiltro=='INTERNOS'?'activo':''}"
+    onclick="BFW.Personas.filtrarTipo('INTERNOS')">
+
+    Empleados
+
+</button>
+
+</div>
+
+        <div class="personas-resumen">
+
+            <span>
+
+                <strong>${BFW.Personas.data.length}</strong> personas
+
+            </span>
+
+            <span class="personas-separador">•</span>
+
+            <span>
+
+                <strong>${BFW.Personas.data.filter(p=>p.activo=="SI").length}</strong> activas
+
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="personas-list">
+
+        ${BFW.Personas.renderCards()}
+
+    </div>
+
+</div>
+
+`;
+
+};
+
+BFW.Personas.renderFormularioBase = function(p={}, modo="nuevo"){
+
+const editando = modo==="editar";
+
+return `
+
+<div class="persona-form-wrapper">
+
+    <div class="card persona-form-card">
+
+        <div class="babex-panel-title">
+
+            <h2>
+
+                ${editando ? "✏ Editar persona" : "👤 Nueva persona"}
+
+            </h2>
+
+            <p>
+
+                ${editando
+                    ? "Modifica la información del contacto."
+                    : "Crea un nuevo cliente, proveedor o colaborador."
+                }
+
+            </p>
+
+        </div>
+
+        <div class="persona-form-section">
+
+            <h3>👤 Datos personales</h3>
+
+            <div class="persona-form-grid">
+
+                <div class="persona-campo">
+
+                    <label>Nombre *</label>
+
+                    <input
+                        id="nombre"
+                        class="babex-input"
+                        value="${p.nombre || ""}">
+
+                </div>
+
+                <div class="persona-campo">
+
+                    <label>Apellidos *</label>
+
+                    <input
+                        id="apellidos"
+                        class="babex-input"
+                        value="${p.apellidos || ""}">
+
+                </div>
+
+                <div class="persona-campo">
+
+                    <label>Tipo</label>
+
+                    <select
+                        id="tipo"
+                        class="babex-input">
+
+                        <option ${p.tipo=="Cliente"?"selected":""}>Cliente</option>
+                        <option ${p.tipo=="Cliente Premium"?"selected":""}>Cliente Premium</option>
+                        <option ${p.tipo=="Empleado"?"selected":""}>Empleado</option>
+
+                    </select>
+
+                </div>
+
+                <div class="persona-campo">
+
+                    <label>Empresa</label>
+
+                    <input
+                        class="babex-input"
+                        placeholder="Próximamente"
+                        disabled>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="persona-form-section">
+
+<h3>📞 Contacto</h3>
+
+<div class="persona-form-grid">
+
+    <div class="persona-campo">
+
+        <label>Teléfono *</label>
+
+        <input
+            type="tel"
+            id="telefono"
+            class="babex-input"
+            value="${p.telefono || ""}"
+            maxlength="9"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,9)">
+
+    <div class="persona-campo">
+
+        <label>Email</label>
+
+        <input
+            id="email"
+            class="babex-input"
+            value="${p.email || ""}">
+
+    </div>
+
+    <div class="persona-campo">
+
+        <label>Ciudad</label>
+
+        <input
+            id="ciudad"
+            class="babex-input"
+            value="${p.ciudad || ""}">
+
+    </div>
+
+    <div class="persona-campo">
+
+        <label>Dirección</label>
+
+        <input
+            id="direccion"
+            class="babex-input"
+            value="${p.direccion || ""}">
+
+    </div>
+
+</div>
+
+</div>
+
+<div class="persona-form-section">
+
+<div class="persona-observaciones-layout">
+
+    <div class="persona-campo">
+
+        <label>📝 Observaciones</label>
+
+        <textarea
+            id="observaciones"
+            class="babex-input persona-observaciones-input"
+            placeholder="Añade cualquier información relevante sobre la persona...">${p.observaciones || ""}</textarea>
+
+    </div>
+
+    <div class="persona-info-box">
+
+        <h4>ℹ Información</h4>
+
+        <div class="persona-info-row">
+
+            <span>ID</span>
+
+            <strong>${p.id || "Nueva"}</strong>
+
+        </div>
+
+        <div class="persona-info-row">
+
+            <span>Empresa</span>
+
+            <strong>Próximamente</strong>
+
+        </div>
+
+        <div class="persona-info-row">
+
+            <span>Casos</span>
+
+            <strong>${BFW.Personas.casosDe(p.id).length}</strong>
+
+        </div>
+
+        <div class="persona-info-row">
+
+            <span>Documentos</span>
+
+            <strong>${BFW.Personas.documentosDe(p.id).length}</strong>
+
+        </div>
+
+    </div>
+
+</div>
+
+</div>
+<div class="persona-form-footer">
+
+<div class="persona-form-buttons">
+
+    <button
+    class="babex-btn babex-btn-secondary"
+    onclick="BFW.Personas.back()">
+
+    Cancelar
+
+</button>
+
+    <button
+        class="babex-btn babex-btn-primary"
+        onclick="${editando
+            ? 'BFW.Personas.guardarEdicion()'
+            : 'BFW.Personas.guardarNueva()'}">
+
+        ${editando ? "Guardar cambios" : "Guardar persona"}
+
+    </button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+`;
+
+};
+
+BFW.Personas.renderFormulario = function(){
+
+return BFW.Personas.renderFormularioBase({}, "nuevo");
+
+};
+
+BFW.Personas.renderFormularioEdicion = function(p){
+
+return BFW.Personas.renderFormularioBase(p, "editar");
+
+};
+
+BFW.Personas.renderDetalle = function(){
+
+if(!BFW.Personas.current){
+
+    return `
+
+    <div class="card persona-empty">
+
+        <h2>👤 Personas</h2>
+
+        <p>Selecciona una persona de la lista.</p>
+
+    </div>
+
+    `;
+
+}
+
+const p = BFW.Personas.data.find(
+    x => Number(x.id) === Number(BFW.Personas.current)
+);
+
+if(!p){
+
+    return `
+
+    <div class="card persona-empty">
+
+        <h2>👤 Personas</h2>
+
+        <p>La persona ya no existe.</p>
+
+    </div>
+
+    `;
+
+}
+
+return BFW.Personas.renderDetalleLectura(p);
+
+};
+
+BFW.Personas.renderDetalleLectura = function(p){
+
+return `
+
+<div class="persona-detail">
+
+    <div class="persona-top">
+
+        <div class="persona-identidad">
+
+            <div class="persona-avatar-lg">
+                ${BFW.Personas.iniciales(p.nombre,p.apellidos)}
+            </div>
+
+            <div>
+
+                <h2 class="persona-title">
+                    ${p.nombre} ${p.apellidos}
+                </h2>
+
+                <div class="persona-subtitle">
+                    ${p.tipo}
+                </div>
+
+            </div>
+
+        </div>
+
+${BFW.Auth.esAdmin() ? `<div style="display:flex;gap:10px;">
+
+    <button
+        class="babex-btn babex-btn-primary"
+        onclick="BFW.Personas.editando=true;BFW.Personas.view='FORM';BFW.App.render();">
+
+        ✏ Editar
+
+    </button>
+
+    <button
+        class="babex-btn babex-btn-danger"
+        onclick="BFW.Personas.eliminar()">
+
+        🗑 Eliminar
+
+    </button>
+
+</div>` : ""}
+
+    </div>
+
+
+    <div class="persona-form-grid">
+
+        <div class="persona-box">
+
+            <h3>📞 Contacto</h3>
+
+            <div class="persona-detail-row">
+                <span>Teléfono</span>
+                <strong>${p.telefono || "-"}</strong>
+            </div>
+
+            <div class="persona-detail-row">
+                <span>Email</span>
+                <strong>${p.email || "-"}</strong>
+            </div>
+
+            <div class="persona-detail-row">
+                <span>Ciudad</span>
+                <strong>${p.ciudad || "-"}</strong>
+            </div>
+
+            <div class="persona-detail-row">
+                <span>Dirección</span>
+                <strong>${p.direccion || "-"}</strong>
+            </div>
+
+        </div>
+
+
+        <div class="persona-box">
+
+            <h3>📝 Observaciones</h3>
+
+            <div class="persona-observaciones">
+
+                ${p.observaciones || "Sin observaciones."}
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="persona-modulos">
+
+        <div class="persona-module">
+
+            <div class="persona-module-header">
+
+                <span>📂 Casos</span>
+
+                <span class="persona-count">${BFW.Personas.casosDe(p.id).length}</span>
+
+            </div>
+
+            ${
+                BFW.Personas.casosDe(p.id).length === 0
+                    ? `<p>No hay casos asociados.</p>`
+                    : `<div class="persona-enlaces">
+                        ${BFW.Personas.casosDe(p.id).map(function(c){
+                            return `<div class="persona-enlace" onclick="BFW.irAFicha('casos', ${c.id})">
+                                        <span>${c.tipo || "Caso"} — ${c.estado || ""}${c.descripcion ? " · " + c.descripcion : ""}</span>
+                                        <span class="persona-enlace-flecha">›</span>
+                                    </div>`;
+                        }).join("")}
+                       </div>`
+            }
+
+            <button class="babex-btn-secondary persona-module-btn" onclick="BFW.Personas.crear('caso', ${p.id})">+ Nuevo caso</button>
+
+        </div>
+
+        <div class="persona-module">
+
+            <div class="persona-module-header">
+
+                <span>📅 Próximas citas</span>
+
+                <span class="persona-count">${BFW.Personas.citasDe(p.id).length}</span>
+
+            </div>
+
+            ${
+                BFW.Personas.citasDe(p.id).length === 0
+                    ? `<p>No hay citas asociadas.</p>`
+                    : `<div class="persona-enlaces">
+                        ${BFW.Personas.citasDe(p.id).map(function(c){
+                            return `<div class="persona-enlace" onclick="BFW.irAFicha('agenda', ${c.id})">
+                                        <span>${BFW.formatearFecha(c.fecha)} ${c.hora || ""} — ${c.titulo || "Cita"} (${c.estado || ""})</span>
+                                        <span class="persona-enlace-flecha">›</span>
+                                    </div>`;
+                        }).join("")}
+                       </div>`
+            }
+
+            <button class="babex-btn-secondary persona-module-btn" onclick="BFW.Personas.crear('cita', ${p.id})">+ Nueva cita</button>
+
+        </div>
+
+        <div class="persona-module">
+
+            <div class="persona-module-header">
+
+                <span>🏠 Inmuebles</span>
+
+                <span class="persona-count">${BFW.Personas.inmueblesDe(p.id).length}</span>
+
+            </div>
+
+            ${
+                BFW.Personas.inmueblesDe(p.id).length === 0
+                    ? `<p>No hay inmuebles asociados.</p>`
+                    : `<div class="persona-enlaces">
+                        ${BFW.Personas.inmueblesDe(p.id).map(function(i){
+                            return `<div class="persona-enlace" onclick="BFW.irAFicha('inmuebles', ${i.id})">
+                                        <span>${i.direccion || "Sin dirección"}${i.ciudad ? " · " + i.ciudad : ""}</span>
+                                        <span class="persona-enlace-flecha">›</span>
+                                    </div>`;
+                        }).join("")}
+                       </div>`
+            }
+
+            <button class="babex-btn-secondary persona-module-btn" onclick="BFW.Personas.crear('inmueble', ${p.id})">+ Nuevo inmueble</button>
+
+        </div>
+
+        <div class="persona-module">
+
+            <div class="persona-module-header">
+
+                <span>📄 Documentos</span>
+
+                <span class="persona-count">${BFW.Personas.documentosDe(p.id).length}</span>
+
+            </div>
+
+            ${BFW.Documentos.renderMiniLista(BFW.Personas.documentosDe(p.id), {modulo:'personas', id:p.id})}
+
+            <button class="babex-btn-secondary persona-module-btn" onclick="BFW.Documentos.nuevoDesde({vinculo:'cliente', personaId:${p.id}}, {modulo:'personas', id:${p.id}})">+ Añadir documento</button>
+
+        </div>
+
+        <div class="persona-module persona-module-ancho">
+
+            <div class="persona-module-header">
+
+                <span>🕒 Historial</span>
+
+                <span class="persona-count">${BFW.Personas.historial && BFW.Personas.historialDe === p.id ? BFW.Personas.historial.length : ""}</span>
+
+            </div>
+
+            ${BFW.Personas.renderHistorial(p.id)}
+
+        </div>
+
+    </div>
+
+</div>
+
+`;
+
+};
+
+BFW.Personas.render = function(){
+
+if(BFW.Personas.data===null){
+
+    BFW.Personas.load();
+
+    return `
+    <div class="persona-empty">
+        <p>Cargando personas...</p>
+    </div>`;
+}
+
+if(BFW.Personas.current && (BFW.Personas.inmuebles === null || BFW.Personas.casos === null || BFW.Personas.citas === null || BFW.Personas.documentos === null)){
+
+    BFW.Personas.cargarRelacionados(function(){
+
+        BFW.App.render();
+
+    });
+
+    return `
+    <div class="persona-empty">
+        <p>Cargando personas...</p>
+    </div>`;
+
+}
+
+if(BFW.Personas.view==="FORM"){
+
+return `
+
+<div class="persona-editor-page">
+
+    <div class="persona-editor-header">
+
+        <button
+            class="babex-btn babex-btn-secondary"
+            onclick="BFW.Personas.back()">
+
+            ← Volver
+
+        </button>
+
+        <div>
+
+            <h2>
+
+                ${BFW.Personas.editando ? "Editar persona" : "Nueva persona"}
+
+            </h2>
+
+            <p>
+
+                ${BFW.Personas.editando
+                    ? "Modifica la información de la persona."
+                    : "Introduce los datos del nuevo contacto."}
+
+            </p>
+
+        </div>
+
+    </div>
+
+    <div class="persona-editor">
+
+        ${
+            BFW.Personas.editando
+            ? BFW.Personas.renderFormularioEdicion(
+                BFW.Personas.data.find(
+                    x => Number(x.id) === Number(BFW.Personas.current)
+                )
+            )
+            : BFW.Personas.renderFormulario()
+        }
+
+    </div>
+
+</div>
+
+`;
+
+}
+
+return `
+
+<div class="dashboard">
+
+    <div class="dashboard-title personas-header">
+
+        <div>
+
+            <h2>Personas</h2>
+
+            <p>Clientes, proveedores y colaboradores.</p>
+
+        </div>
+
+        <button
+            class="babex-btn babex-btn-primary"
+            onclick="BFW.Personas.nueva()">
+
+            + Nueva persona
+
+        </button>
+
+    </div>
+
+    <div class="bfw-master-detail">
+
+<aside class="bfw-panel">
+
+    <div class="bfw-panel-body">
+
+        ${BFW.Personas.renderLista()}
+
+    </div>
+
+</aside>
+
+<section class="bfw-panel">
+
+    <div class="bfw-panel-body">
+
+        ${
+
+            BFW.Personas.current
+            ? BFW.Personas.renderDetalle()
+            : `
+
+            <div class="persona-empty">
+
+                <div class="persona-empty-icon">
+
+                    👥
+
+                </div>
+
+                <h2>
+
+                    Bienvenido al módulo Personas
+
+                </h2>
+
+                <p>
+
+                    Gestiona clientes, proveedores y colaboradores desde un único lugar.
+
+                </p>
+
+                <div class="persona-empty-stats">
+
+                    <div class="persona-empty-stat">
+
+                        <strong>${BFW.Personas.data.length}</strong>
+
+                        <span>Personas</span>
+
+                    </div>
+
+                    <div class="persona-empty-stat">
+
+                        <strong>${BFW.Personas.data.filter(p=>p.activo=="SI").length}</strong>
+
+                        <span>Activas</span>
+
+                    </div>
+
+                </div>
+
+                <div class="persona-empty-help">
+
+                    ← Selecciona una persona de la lista para visualizar su información.
+
+                </div>
+
+            </div>
+
+            `
+        }
+
+    </div>
+
+</section>
+
+</div>
+
+</div>
+
+`;
+
+};
+
+
+</script>

@@ -1,0 +1,31 @@
+{
+  "name": "BABEX Instalador",
+  "short_name": "BABEX",
+  "description": "Visitas asignadas y parte de instalación para técnicos de BABEX.",
+  "start_url": "/?fuente=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#16294A",
+  "theme_color": "#16294A",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
